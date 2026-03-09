@@ -1,0 +1,2600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Choose Your Winner - WebGL Stream Race</title>
+<style>
+  :root {
+    --sky1: #9edcff;
+    --sky2: #d4f1ff;
+    --sky3: #ffe8ab;
+    --sand1: #f7d88e;
+    --sand2: #e7b66a;
+    --sand3: #d59c55;
+    --water1: #effcff;
+    --water2: #bcecf7;
+    --water3: #82d7ea;
+    --ink: #5a3d1a;
+    --panel: rgba(255, 248, 232, 0.92);
+    --panelBorder: rgba(105, 73, 31, 0.16);
+    --softShadow: 0 10px 26px rgba(88, 58, 21, 0.12);
+  }
+
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: linear-gradient(to bottom, var(--sky1), var(--sky3) 54%, var(--sand2));
+    color: #3c2915;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  #app {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 3fr 1fr;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  #stage {
+    position: relative;
+    overflow: hidden;
+    min-width: 0;
+    min-height: 0;
+    background: linear-gradient(to bottom, #d4f1ff 0%, #fae5b0 26%, #efc57c 72%, #d79956 100%);
+  }
+
+  #glCanvas,
+  #overlayCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #overlayCanvas { pointer-events: none; }
+
+  #sidebar {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(255,246,223,0.98), rgba(245,215,145,0.98));
+    border-left: 1px solid rgba(104, 68, 28, 0.18);
+    box-shadow: -8px 0 24px rgba(87, 56, 19, 0.08);
+    z-index: 6;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panelBorder);
+    border-radius: 18px;
+    box-shadow: var(--softShadow);
+    backdrop-filter: blur(6px);
+  }
+
+  #titlePanel {
+    padding: 14px;
+    flex: 0 0 auto;
+  }
+
+  #titlePanel h1 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    font-weight: 900;
+    color: var(--ink);
+  }
+
+  #titlePanel .sub {
+    font-size: 13px;
+    line-height: 1.45;
+    color: rgba(74, 47, 18, 0.92);
+  }
+
+  #controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  button {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    color: #3c2915;
+    background: linear-gradient(180deg, #fffaf0, #ffe29a);
+    box-shadow: 0 6px 16px rgba(128, 81, 18, 0.16);
+  }
+
+  button.secondary {
+    background: rgba(255,255,255,0.58);
+    border: 1px solid rgba(112, 74, 27, 0.16);
+    box-shadow: none;
+  }
+
+  button:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  .legend {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 12px;
+    color: rgba(74, 47, 18, 0.9);
+  }
+
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.45) inset;
+    flex: 0 0 auto;
+  }
+
+  #leaderboard {
+    padding: 12px;
+    min-height: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #leaderboard h2 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  #chosenLine {
+    margin: 0 0 10px 0;
+    font-size: 12px;
+    color: rgba(85,56,25,0.9);
+  }
+
+  #leaderRows {
+    display: grid;
+    gap: 6px;
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 28px 14px 1fr 44px 84px;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 11px;
+    background: rgba(255,255,255,0.48);
+    font-size: 13px;
+    color: #3b2917;
+  }
+
+  .row.selected {
+    outline: 2px solid rgba(95, 151, 215, 0.55);
+    background: rgba(238, 248, 255, 0.82);
+  }
+
+  .row .pos {
+    font-weight: 900;
+    text-align: center;
+  }
+
+  .row .name {
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .row .pts,
+  .row .status {
+    text-align: right;
+    font-family: Consolas, Menlo, Monaco, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .row .pts {
+    font-weight: 900;
+    color: #704818;
+  }
+
+  .row .status {
+    color: rgba(60, 41, 21, 0.86);
+  }
+
+  #openingOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    overflow: hidden;
+    background: linear-gradient(to bottom, var(--sky1) 0%, #c8f0ff 34%, var(--sky3) 68%, #f7d88e 100%);
+    transition: opacity 0.55s ease, visibility 0.55s ease, background 0.35s ease;
+  }
+
+  #openingOverlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  #openingOverlay.previewing {
+    background:
+      linear-gradient(to bottom, rgba(158,220,255,0.34) 0%, rgba(255,232,171,0.22) 72%, rgba(247,216,142,0.32) 100%);
+    backdrop-filter: blur(2px);
+  }
+
+  .sun {
+    position: absolute;
+    right: 9vw;
+    top: 8vh;
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff8d8 0%, #ffe07c 38%, #ffcf57 68%, rgba(255,207,87,0.14) 100%);
+    box-shadow: 0 0 80px rgba(255, 225, 116, 0.65);
+  }
+
+  .cloud {
+    position: absolute;
+    width: 180px;
+    height: 54px;
+    background: rgba(255,255,255,0.86);
+    border-radius: 999px;
+    animation: drift linear infinite;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.06);
+  }
+
+  .cloud::before, .cloud::after {
+    content: "";
+    position: absolute;
+    background: inherit;
+    border-radius: 50%;
+  }
+
+  .cloud::before { width: 74px; height: 74px; left: 24px; top: -28px; }
+  .cloud::after  { width: 92px; height: 92px; right: 24px; top: -42px; }
+  .cloud.c1 { top: 12vh; left: -220px; animation-duration: 42s; }
+  .cloud.c2 { top: 22vh; left: -280px; transform: scale(0.75); animation-duration: 31s; animation-delay: -8s; }
+  .cloud.c3 { top: 30vh; left: -240px; transform: scale(1.08); animation-duration: 48s; animation-delay: -16s; }
+  .cloud.c4 { top: 17vh; left: -210px; transform: scale(0.62); animation-duration: 27s; animation-delay: -5s; }
+
+  @keyframes drift {
+    from { transform: translateX(0) scale(var(--s, 1)); }
+    to   { transform: translateX(calc(100vw + 420px)) scale(var(--s, 1)); }
+  }
+
+  .seaStripe {
+    position: absolute;
+    left: 0; right: 0;
+    bottom: 26vh;
+    height: 24px;
+    background: linear-gradient(to right, rgba(92,199,255,0.65), rgba(255,255,255,0.35), rgba(92,199,255,0.65));
+    opacity: 0.45;
+  }
+
+  .duneBack,
+  .duneFront {
+    position: absolute;
+    left: -8vw;
+    width: 116vw;
+    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  }
+
+  .duneBack {
+    bottom: -4vh;
+    height: 28vh;
+    background: linear-gradient(to bottom, #e7bb73, #d59c55);
+  }
+
+  .duneFront {
+    bottom: -7vh;
+    height: 23vh;
+    background: linear-gradient(to bottom, #f1cf88, #e0ae61);
+  }
+
+  #openingCard {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: min(940px, 86vw);
+    transform: translate(-50%, -50%);
+    padding: 26px 28px 22px 28px;
+    border-radius: 28px;
+    background: rgba(255, 248, 233, 0.80);
+    border: 1px solid rgba(120, 80, 28, 0.12);
+    box-shadow: 0 20px 50px rgba(118, 78, 25, 0.15);
+    text-align: center;
+  }
+
+  #openingOverlay.previewing #openingCard {
+    left: 18px;
+    top: 18px;
+    width: min(360px, calc(100vw - 36px));
+    transform: none;
+    text-align: left;
+    padding: 18px;
+  }
+
+  #openingMessage {
+    margin: 0 0 18px 0;
+    font: bold 30px/1.15 "Courier New", monospace;
+    color: var(--ink);
+    text-shadow: 0 1px 0 rgba(255,255,255,0.45);
+  }
+
+  #pickGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px;
+    margin: 12px 0 18px 0;
+    text-align: left;
+  }
+
+  .pickItem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.50);
+    border: 1px solid rgba(102, 70, 29, 0.08);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .pickItem input { display: none; }
+
+  .pickItem.selected {
+    background: rgba(235, 247, 255, 0.88);
+    outline: 2px solid rgba(95, 151, 215, 0.48);
+  }
+
+  .pickItem.locked {
+    opacity: 0.68;
+    cursor: default;
+  }
+
+  .pickSwatch {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.14) inset;
+    flex: 0 0 auto;
+  }
+
+  #overlayButtons {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  #openingOverlay.previewing #overlayButtons {
+    justify-content: flex-start;
+  }
+
+  #startButton {
+    background: linear-gradient(180deg, #fffdf8, #ffe59f);
+    color: #3c2a14;
+    padding: 12px 18px;
+    font-size: 14px;
+    box-shadow: 0 8px 24px rgba(139, 91, 18, 0.18);
+  }
+
+  #previewControls {
+    display: none;
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.56);
+    border: 1px solid rgba(101, 69, 31, 0.08);
+  }
+
+  #openingOverlay.previewing #previewControls {
+    display: block;
+  }
+
+  #previewControls label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: rgba(79, 52, 21, 0.92);
+  }
+
+  #previewControls input[type="range"] {
+    width: 100%;
+  }
+
+  #previewHint {
+    margin-top: 8px;
+    font-size: 12px;
+    color: rgba(76, 49, 18, 0.9);
+    line-height: 1.45;
+  }
+
+  #finishBanner {
+    position: fixed;
+    left: calc((100vw * 0.75) / 2);
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 11;
+    padding: 10px 16px;
+    color: #fff;
+    font-weight: 800;
+    background: rgba(8, 12, 18, 0.82);
+    border: 1px solid rgba(255,255,255,0.16);
+    border-radius: 999px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.3);
+    display: none;
+    user-select: none;
+    cursor: default;
+  }
+
+  #finishBanner.show { display: block; }
+  #finishBanner.clickable {
+    cursor: pointer;
+    background: rgba(8, 12, 18, 0.93);
+    box-shadow: 0 10px 34px rgba(0,0,0,0.36);
+  }
+
+  #mobileStandingsToggle {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 14;
+    display: none;
+    padding: 10px 14px;
+    background: rgba(255, 248, 232, 0.94);
+    border: 1px solid rgba(104, 68, 28, 0.18);
+    box-shadow: var(--softShadow);
+  }
+
+  #mobileStandingsToggle.active {
+    background: linear-gradient(180deg, #fffaf0, #ffe29a);
+  }
+
+  #courseLine,
+  #seriesLine {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: rgba(85,56,25,0.9);
+  }
+
+  #seriesLine {
+    margin-bottom: 2px;
+    font-weight: 700;
+  }
+
+  #championshipOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(to bottom, rgba(18,27,46,0.54), rgba(18,27,46,0.72));
+    overflow: hidden;
+  }
+
+  #championshipOverlay.show {
+    display: flex;
+  }
+
+  #celebrationCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  #sadBackdropBall {
+    position: absolute;
+    width: min(42vw, 520px);
+    height: min(42vw, 520px);
+    border-radius: 50%;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font: 900 min(16vw, 190px)/1 Arial, Helvetica, sans-serif;
+    color: rgba(0,0,0,0.42);
+    background: radial-gradient(circle at 34% 32%, rgba(255,255,255,0.78), var(--sad-ball, #7aa7ff) 34%, color-mix(in srgb, var(--sad-ball, #7aa7ff) 72%, black) 100%);
+    box-shadow: inset -22px -30px 40px rgba(0,0,0,0.22), 0 0 90px rgba(255,255,255,0.18);
+    filter: blur(10px);
+    opacity: 0.28;
+    transform: translate(-50%, -50%);
+    animation: sadFloat 8s ease-in-out infinite;
+  }
+
+  #sadBackdropBall.show {
+    display: flex;
+  }
+
+  @keyframes sadFloat {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, calc(-50% - 18px)) scale(1.05); }
+  }
+
+  #podiumCard {
+    position: relative;
+    width: min(1100px, calc(100vw - 42px));
+    padding: 28px 26px 26px;
+    border-radius: 28px;
+    background: rgba(255, 248, 233, 0.90);
+    border: 1px solid rgba(120, 80, 28, 0.14);
+    box-shadow: 0 26px 60px rgba(0,0,0,0.26);
+    backdrop-filter: blur(8px);
+  }
+
+  #podiumTitle {
+    margin: 0 0 8px 0;
+    font: 900 30px/1.05 "Courier New", monospace;
+    color: var(--ink);
+    text-align: center;
+  }
+
+  #podiumSummary {
+    margin: 0 auto 18px auto;
+    max-width: 760px;
+    text-align: center;
+    color: rgba(74,47,18,0.92);
+    line-height: 1.45;
+    font-size: 14px;
+  }
+
+  #podiumRow {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+    gap: 16px;
+    min-height: 360px;
+    margin-top: 10px;
+  }
+
+  .podiumStep {
+    position: relative;
+    border-radius: 22px 22px 10px 10px;
+    padding: 18px 16px 16px;
+    color: #2f1c08;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.42), 0 14px 30px rgba(92, 60, 17, 0.16);
+    border: 1px solid rgba(119,79,24,0.16);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+  }
+
+  .podiumStep.first { height: 250px; background: linear-gradient(to bottom, #fff5be, #f2c64d); }
+  .podiumStep.second { height: 205px; background: linear-gradient(to bottom, #f8fbff, #cad4e2); }
+  .podiumStep.third { height: 170px; background: linear-gradient(to bottom, #f6dfc7, #d89a65); }
+
+  .podiumBall {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    box-shadow: inset -8px -10px 18px rgba(0,0,0,0.18), inset 7px 7px 16px rgba(255,255,255,0.54), 0 8px 16px rgba(0,0,0,0.14);
+    border: 2px solid rgba(255,255,255,0.75);
+  }
+
+  .podiumPlace {
+    font: 900 22px/1 Arial, Helvetica, sans-serif;
+  }
+
+  .podiumName {
+    font-weight: 900;
+    font-size: 18px;
+  }
+
+  .podiumMeta {
+    font-family: Consolas, Menlo, Monaco, monospace;
+    font-size: 13px;
+    color: rgba(47,28,8,0.85);
+  }
+
+  #podiumButtons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+
+  @media (max-width: 920px) {
+    #app { grid-template-columns: 1fr; }
+
+    #mobileStandingsToggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #sidebar {
+      position: fixed;
+      top: 58px;
+      right: 12px;
+      width: min(360px, calc(100vw - 24px));
+      max-height: min(70vh, calc(100% - 70px));
+      border-left: 0;
+      border: 1px solid rgba(104,68,28,0.18);
+      border-radius: 18px;
+      box-shadow: var(--softShadow);
+      background: rgba(255,246,223,0.97);
+      z-index: 13;
+      transform: translateX(calc(100% + 24px));
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.24s ease, opacity 0.24s ease;
+    }
+
+    #sidebar.open {
+      transform: translateX(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    #titlePanel .sub,
+    .legend {
+      display: none;
+    }
+
+    #titlePanel {
+      padding: 12px;
+    }
+
+    #controls {
+      margin-top: 8px;
+    }
+
+    #leaderboard {
+      min-height: 0;
+    }
+
+    #finishBanner {
+      left: 50%;
+      width: min(calc(100vw - 28px), 520px);
+      text-align: center;
+      white-space: normal;
+      border-radius: 18px;
+    }
+  }
+</style>
+</head>
+<body>
+<button id="mobileStandingsToggle" type="button">Show Standings</button>
+<div id="app">
+  <div id="stage">
+    <canvas id="glCanvas"></canvas>
+    <canvas id="overlayCanvas"></canvas>
+  </div>
+  <aside id="sidebar">
+    <div id="titlePanel" class="panel">
+      <h1>Stream Sprint</h1>
+      <div class="sub">Ten racers roll through a long sandy channel. Choose one winner, follow that racer with the camera, and compare the inner-bank and outer-bank letter markers as the field sorts itself out.</div>
+      <div id="controls">
+        <button id="topStartButton">Next Course</button>
+        <button id="showOverlayButton" class="secondary">Show Opening Screen</button>
+      </div>
+      <div class="legend">
+        <span><i class="dot" style="background:#e33649"></i> outer-bank letters</span>
+        <span><i class="dot" style="background:#6b1f2d"></i> inner-bank letters</span>
+        <span><i class="dot" style="background:#8fd8e8"></i> channel shimmer</span>
+      </div>
+    </div>
+    <div id="leaderboard" class="panel">
+      <h2>Championship Standings</h2>
+      <p id="seriesLine"></p>
+      <p id="courseLine"></p>
+      <p id="chosenLine"></p>
+      <div id="leaderRows"></div>
+    </div>
+  </aside>
+</div>
+
+<div id="openingOverlay">
+  <div class="sun"></div>
+  <div class="cloud c1"></div>
+  <div class="cloud c2"></div>
+  <div class="cloud c3"></div>
+  <div class="cloud c4"></div>
+  <div class="seaStripe"></div>
+  <div class="duneBack"></div>
+  <div class="duneFront"></div>
+  <div id="openingCard">
+    <p id="openingMessage">Choose your Winner!  Watch for Places of Erosion!</p>
+    <div id="pickGrid"></div>
+    <div id="overlayButtons">
+      <button id="startButton">Start Course 1</button>
+      <button id="previewButton" class="secondary">Preview Track</button>
+    </div>
+    <div id="previewControls">
+      <label for="previewSlider">Preview track scroll</label>
+      <input id="previewSlider" type="range" min="0" max="1000" step="1" value="0" />
+      <div id="previewHint">Use the slider or mouse wheel to scroll the full track before the race starts.</div>
+    </div>
+  </div>
+</div>
+
+<div id="finishBanner"></div>
+
+<div id="championshipOverlay">
+  <canvas id="celebrationCanvas"></canvas>
+  <div id="sadBackdropBall"><span>☹</span></div>
+  <div id="podiumCard">
+    <h2 id="podiumTitle">Championship Podium</h2>
+    <p id="podiumSummary"></p>
+    <div id="podiumRow"></div>
+    <div id="podiumButtons">
+      <button id="restartSeriesButton">Restart Championship</button>
+      <button id="closePodiumButton" class="secondary">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const glCanvas = document.getElementById('glCanvas');
+  const overlayCanvas = document.getElementById('overlayCanvas');
+  const ctx = overlayCanvas.getContext('2d');
+  const sidebar = document.getElementById('sidebar');
+  const mobileStandingsToggle = document.getElementById('mobileStandingsToggle');
+  const compactMedia = window.matchMedia('(max-width: 920px)');
+  const leaderRows = document.getElementById('leaderRows');
+  const chosenLine = document.getElementById('chosenLine');
+  const seriesLine = document.getElementById('seriesLine');
+  const courseLine = document.getElementById('courseLine');
+  const openingOverlay = document.getElementById('openingOverlay');
+  const openingMessage = document.getElementById('openingMessage');
+  const pickGrid = document.getElementById('pickGrid');
+  const startButton = document.getElementById('startButton');
+  const topStartButton = document.getElementById('topStartButton');
+  const previewButton = document.getElementById('previewButton');
+  const previewSlider = document.getElementById('previewSlider');
+  const showOverlayButton = document.getElementById('showOverlayButton');
+  const finishBanner = document.getElementById('finishBanner');
+  const championshipOverlay = document.getElementById('championshipOverlay');
+  const celebrationCanvas = document.getElementById('celebrationCanvas');
+  const celebrationCtx = celebrationCanvas.getContext('2d');
+  const podiumSummary = document.getElementById('podiumSummary');
+  const podiumRow = document.getElementById('podiumRow');
+  const sadBackdropBall = document.getElementById('sadBackdropBall');
+  const restartSeriesButton = document.getElementById('restartSeriesButton');
+  const closePodiumButton = document.getElementById('closePodiumButton');
+
+  const RACER_SPECS = [
+    { name: 'Sir Wobble', color: '#ff595e' },
+    { name: 'Mango Meteor', color: '#ff924c' },
+    { name: 'Lemon Looper', color: '#ffca3a' },
+    { name: 'Minty Marvel', color: '#8ac926' },
+    { name: 'Aqua Noodle', color: '#52b788' },
+    { name: 'Blueberry Blink', color: '#1982c4' },
+    { name: 'Plum Poppet', color: '#6a4c93' },
+    { name: 'Rosie Rumble', color: '#f15bb5' },
+    { name: 'Teal Tater', color: '#00bbf9' },
+    { name: 'Goldie Giggles', color: '#ffd166' }
+  ];
+
+  const COURSE_POINTS = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+  const COURSES = [
+    {
+      name: 'Course 1 · Sandy Sweep',
+      summary: 'The opening chute is much longer now, with the same sweeping character repeated at full wandering frequency.',
+      worldScale: 18.0,
+      channelScale: 1.0,
+      gravityY: 820,
+      guideStrength: 82,
+      bankRepelStrength: 140,
+      maxSpeed: 620,
+      minSlide: 52,
+      launchBase: 34,
+      launchStep: 0.55,
+      startDown: 120,
+      pathType: 'classic'
+    },
+    {
+      name: 'Course 2 · Long Winding Meanders',
+      summary: 'A much longer meander belt with dramatic bank-to-bank swings and quicker lateral wandering.',
+      worldScale: 22.2,
+      channelScale: 1.03,
+      gravityY: 760,
+      guideStrength: 74,
+      bankRepelStrength: 132,
+      maxSpeed: 590,
+      minSlide: 48,
+      launchBase: 31,
+      launchStep: 0.48,
+      startDown: 112,
+      pathType: 'long'
+    },
+    {
+      name: 'Course 3 · Narrow Meanders',
+      summary: 'A long narrow ribbon with fast, frequent meanders instead of a stretched-out snake.',
+      worldScale: 18.9,
+      channelScale: 0.72,
+      gravityY: 735,
+      guideStrength: 76,
+      bankRepelStrength: 125,
+      maxSpeed: 560,
+      minSlide: 46,
+      launchBase: 29,
+      launchStep: 0.45,
+      startDown: 108,
+      pathType: 'narrow'
+    },
+    {
+      name: 'Course 4 · Braided Stream',
+      summary: 'A longer braided reach with more active threads, more separated channels, and visible blocking sand bars.',
+      worldScale: 19.2,
+      channelScale: 0.56,
+      gravityY: 715,
+      guideStrength: 68,
+      bankRepelStrength: 118,
+      maxSpeed: 540,
+      minSlide: 44,
+      launchBase: 28,
+      launchStep: 0.42,
+      startDown: 102,
+      pathType: 'braided'
+    }
+  ];
+
+  const state = {
+    dpr: 1,
+    stageW: 0,
+    stageH: 0,
+    worldW: 0,
+    worldH: 0,
+    channelHalf: 120,
+    path: [],
+    paths: [],
+    physicsPaths: [],
+    sandbars: [],
+    markers: [],
+    crabs: [],
+    racers: [],
+    selectedWinner: 0,
+    running: false,
+    finished: false,
+    startedOnce: false,
+    previewMode: false,
+    previewScroll: 0,
+    cameraY: 0,
+    cameraTargetY: 0,
+    startTime: 0,
+    placeCounter: 0,
+    accumulator: 0,
+    lastFrame: 0,
+    lastBoardUpdate: 0,
+    gl: null,
+    program: null,
+    buffer: null,
+    texture: null,
+    uniforms: null,
+    glReady: false,
+    trackCanvas: null,
+    currentCourse: 0,
+    championshipPoints: Array(RACER_SPECS.length).fill(0),
+    aggregateTime: Array(RACER_SPECS.length).fill(0),
+    lastCoursePlace: Array(RACER_SPECS.length).fill(null),
+    lastCourseTime: Array(RACER_SPECS.length).fill(null),
+    courseResults: [],
+    championshipComplete: false,
+    confetti: [],
+    sidebarOpen: !compactMedia.matches,
+    finishBannerAction: 'none',
+    selectionLocked: false
+  };
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function randRange(lo, hi) { return lo + Math.random() * (hi - lo); }
+  function smoothstep(a, b, x) {
+    const t = clamp((x - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+  function dist2(ax, ay, bx, by) {
+    const dx = ax - bx;
+    const dy = ay - by;
+    return dx * dx + dy * dy;
+  }
+  function fmtTime(ms) {
+    if (ms == null) return '—';
+    return (ms / 1000).toFixed(3) + ' s';
+  }
+  function initials(name) {
+    return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+  }
+  function normalize(x, y) {
+    const len = Math.hypot(x, y) || 1;
+    return { x: x / len, y: y / len };
+  }
+  function courseConfig() {
+    return COURSES[state.currentCourse];
+  }
+  function championshipStandings() {
+    return RACER_SPECS.map((spec, id) => ({
+      id,
+      name: spec.name,
+      color: spec.color,
+      points: state.championshipPoints[id],
+      aggregateTime: state.aggregateTime[id],
+      lastPlace: state.lastCoursePlace[id],
+      lastTime: state.lastCourseTime[id],
+      live: state.racers[id] || null
+    })).sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      const aDone = Number.isFinite(a.aggregateTime) ? a.aggregateTime : 1e15;
+      const bDone = Number.isFinite(b.aggregateTime) ? b.aggregateTime : 1e15;
+      if (aDone !== bDone) return aDone - bDone;
+      const ap = a.live ? a.live.progress : 0;
+      const bp = b.live ? b.live.progress : 0;
+      if (bp !== ap) return bp - ap;
+      const ay = a.live ? a.live.y : 0;
+      const by = b.live ? b.live.y : 0;
+      return by - ay;
+    });
+  }
+
+  function buildOpeningText() {
+    const c = courseConfig();
+    openingMessage.textContent = `Choose your Winner! ${c.name}`;
+    startButton.textContent = state.championshipComplete ? 'Restart Championship' : `Start ${c.name.split('·')[0].trim()}`;
+  }
+
+  function updateSeriesText() {
+    const c = courseConfig();
+    const completed = state.courseResults.length;
+    seriesLine.textContent = `Series score: 10 points for 1st, down to 1 point for 10th. Completed courses: ${completed}/${COURSES.length}.`;
+    courseLine.textContent = `${c.name} — ${c.summary}`;
+    const chosen = RACER_SPECS[state.selectedWinner];
+    chosenLine.textContent = state.selectionLocked
+      ? `Camera follow: ${chosen.name} · locked for this championship.`
+      : `Camera follow: ${chosen.name} · choose before Course 1 starts.`;
+    topStartButton.textContent = state.championshipComplete ? 'Restart Championship' : 'Next Course';
+    topStartButton.disabled = state.running;
+  }
+
+  function buildPickGrid() {
+    const locked = state.selectionLocked;
+    pickGrid.innerHTML = RACER_SPECS.map((r, i) => `
+      <label class="pickItem${i === state.selectedWinner ? ' selected' : ''}${locked ? ' locked' : ''}" data-id="${i}">
+        <input type="radio" name="winnerPick" value="${i}" ${i === state.selectedWinner ? 'checked' : ''} ${locked ? 'disabled' : ''} />
+        <span class="pickSwatch" style="background:${r.color}"></span>
+        <strong>${r.name}</strong>
+      </label>
+    `).join('');
+    pickGrid.querySelectorAll('.pickItem').forEach(el => {
+      el.addEventListener('click', () => {
+        if (state.selectionLocked) return;
+        state.selectedWinner = Number(el.dataset.id);
+        buildPickGrid();
+        updateSeriesText();
+        updateLeaderboard(true);
+      });
+    });
+  }
+
+  function pointAlong(path, t) {
+    const pts = path;
+    const idx = clamp(t, 0, 1) * (pts.length - 1);
+    const i0 = Math.floor(idx);
+    const i1 = Math.min(pts.length - 1, i0 + 1);
+    const f = idx - i0;
+    const a = pts[i0];
+    const b = pts[i1];
+    const dir = normalize(lerp(a.tx, b.tx, f), lerp(a.ty, b.ty, f));
+    return {
+      t,
+      x: lerp(a.x, b.x, f),
+      y: lerp(a.y, b.y, f),
+      tx: dir.x,
+      ty: dir.y,
+      nx: -dir.y,
+      ny: dir.x,
+      curvature: lerp(a.curvature, b.curvature, f)
+    };
+  }
+
+  function samplePath(t, path = state.path) {
+    return pointAlong(path, t);
+  }
+
+  function buildPathFromFormula(count, xFormula) {
+    const margin = state.channelHalf + 48;
+    const pts = [];
+    for (let i = 0; i < count; i++) {
+      const t = i / (count - 1);
+      let x = xFormula(t);
+      x = clamp(x, margin, state.stageW - margin);
+      const y = 120 + t * (state.worldH - 240);
+      pts.push({ t, x, y, tx: 0, ty: 1, nx: -1, ny: 0, curvature: 0 });
+    }
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)];
+      const b = pts[Math.min(pts.length - 1, i + 1)];
+      const n = normalize(b.x - a.x, b.y - a.y);
+      pts[i].tx = n.x;
+      pts[i].ty = n.y;
+      pts[i].nx = -n.y;
+      pts[i].ny = n.x;
+    }
+    for (let i = 1; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const ax = p1.x - p0.x;
+      const ay = p1.y - p0.y;
+      const bx = p2.x - p1.x;
+      const by = p2.y - p1.y;
+      const cross = ax * by - ay * bx;
+      pts[i].curvature = cross / (Math.hypot(ax, ay) * Math.hypot(bx, by) + 1e-6);
+    }
+    pts[0].curvature = pts[1].curvature;
+    pts[pts.length - 1].curvature = pts[pts.length - 2].curvature;
+    return pts;
+  }
+
+  function buildCoursePaths() {
+    const cfg = courseConfig();
+    const center = state.stageW * 0.5;
+    const w = state.stageW;
+    state.sandbars = [];
+    if (cfg.pathType === 'classic') {
+      const path = buildPathFromFormula(2400, t => center
+        + w * 0.22 * Math.sin(t * Math.PI * 10.2 + 0.12)
+        + w * 0.11 * Math.sin(t * Math.PI * 25.5 - 0.82)
+        + w * 0.045 * Math.sin(t * Math.PI * 43.8 + 1.14));
+      state.paths = [path];
+      state.physicsPaths = [path];
+      state.path = path;
+      return;
+    }
+    if (cfg.pathType === 'long') {
+      const path = buildPathFromFormula(2700, t => center
+        + w * 0.46 * Math.sin(t * Math.PI * 6.3 - 0.42)
+        + w * 0.18 * Math.sin(t * Math.PI * 15.0 + 0.92)
+        + w * 0.07 * Math.sin(t * Math.PI * 27.0 - 0.66));
+      state.paths = [path];
+      state.physicsPaths = [path];
+      state.path = path;
+      return;
+    }
+    if (cfg.pathType === 'narrow') {
+      const path = buildPathFromFormula(2400, t => center
+        + w * 0.19 * Math.sin(t * Math.PI * 15.3 + 0.25)
+        + w * 0.07 * Math.sin(t * Math.PI * 32.4 - 0.85)
+        + w * 0.022 * Math.sin(t * Math.PI * 52.2 + 1.20));
+      state.paths = [path];
+      state.physicsPaths = [path];
+      state.path = path;
+      return;
+    }
+
+    const base = t => center
+      + w * 0.12 * Math.sin(t * Math.PI * 7.8 - 0.16)
+      + w * 0.05 * Math.sin(t * Math.PI * 23.5 + 0.44)
+      + w * 0.018 * Math.sin(t * Math.PI * 40.0 - 0.28);
+    const braidA = t => smoothstep(0.05, 0.12, t) * (1 - smoothstep(0.17, 0.24, t));
+    const braidB = t => smoothstep(0.18, 0.25, t) * (1 - smoothstep(0.32, 0.40, t));
+    const braidC = t => smoothstep(0.33, 0.40, t) * (1 - smoothstep(0.50, 0.58, t));
+    const braidD = t => smoothstep(0.52, 0.60, t) * (1 - smoothstep(0.70, 0.78, t));
+    const braidE = t => smoothstep(0.71, 0.79, t) * (1 - smoothstep(0.90, 0.97, t));
+    const braidField = t => braidA(t) + braidB(t) + braidC(t) + braidD(t) + braidE(t);
+    const far = t => w * (0.13 * braidA(t) + 0.17 * braidB(t) + 0.15 * braidC(t) + 0.18 * braidD(t) + 0.15 * braidE(t));
+    const outer = t => w * (0.085 * braidA(t) + 0.11 * braidB(t) + 0.095 * braidC(t) + 0.12 * braidD(t) + 0.10 * braidE(t));
+    const inner = t => w * (0.040 * braidA(t) + 0.052 * braidB(t) + 0.046 * braidC(t) + 0.056 * braidD(t) + 0.048 * braidE(t));
+    const wiggleL = t => w * 0.018 * Math.sin(t * Math.PI * 17.0 + 0.25) * braidField(t);
+    const wiggleM = t => w * 0.015 * Math.sin(t * Math.PI * 15.5 - 0.85) * braidField(t);
+    const wiggleR = t => w * 0.018 * Math.sin(t * Math.PI * 18.2 + 1.05) * braidField(t);
+
+    const visualCount = 1500;
+    const physicsCount = 920;
+    const farLeft = buildPathFromFormula(visualCount, t => base(t) - far(t) - wiggleL(t));
+    const leftVisual = buildPathFromFormula(visualCount, t => base(t) - outer(t) + wiggleM(t) * 0.30);
+    const midVisual = buildPathFromFormula(visualCount, t => base(t) + wiggleM(t) * 0.18);
+    const rightVisual = buildPathFromFormula(visualCount, t => base(t) + outer(t) - wiggleM(t) * 0.30);
+    const farRight = buildPathFromFormula(visualCount, t => base(t) + far(t) + wiggleR(t));
+
+    const leftGuide = buildPathFromFormula(physicsCount, t => base(t) - outer(t) * 0.92 + wiggleL(t) * 0.16);
+    const midGuide = buildPathFromFormula(physicsCount, t => base(t) + wiggleM(t) * 0.10);
+    const rightGuide = buildPathFromFormula(physicsCount, t => base(t) + outer(t) * 0.92 - wiggleR(t) * 0.16);
+
+    state.paths = [farLeft, leftVisual, midVisual, rightVisual, farRight];
+    state.physicsPaths = [leftGuide, midGuide, rightGuide];
+    state.path = midGuide;
+
+    const barSpots = [
+      { t: 0.11, lateral: -1.10, rx: 0.72, ry: 0.24 },
+      { t: 0.17, lateral: 1.18, rx: 0.78, ry: 0.25 },
+      { t: 0.24, lateral: -0.25, rx: 0.68, ry: 0.22 },
+      { t: 0.31, lateral: 1.55, rx: 0.84, ry: 0.27 },
+      { t: 0.39, lateral: -1.52, rx: 0.88, ry: 0.28 },
+      { t: 0.47, lateral: 0.55, rx: 0.74, ry: 0.24 },
+      { t: 0.55, lateral: -1.30, rx: 0.82, ry: 0.26 },
+      { t: 0.63, lateral: 1.42, rx: 0.90, ry: 0.30 },
+      { t: 0.71, lateral: -0.60, rx: 0.76, ry: 0.24 },
+      { t: 0.79, lateral: 1.28, rx: 0.82, ry: 0.25 },
+      { t: 0.86, lateral: -1.18, rx: 0.76, ry: 0.23 },
+      { t: 0.93, lateral: 0.82, rx: 0.70, ry: 0.22 }
+    ];
+    state.sandbars = barSpots.map((bar, i) => {
+      const s = pointAlong(midGuide, bar.t);
+      return {
+        ...bar,
+        x: s.x + s.nx * (state.channelHalf * bar.lateral),
+        y: s.y + s.ny * (i % 2 ? 7 : -7),
+        angle: Math.atan2(s.ty, s.tx) + (i % 2 ? 0.18 : -0.12)
+      };
+    });
+  }
+
+  function buildMarkers() {
+    const labels = 'ABCDEFGHIJ'.split('');
+    const ts = [0.09, 0.16, 0.24, 0.32, 0.40, 0.49, 0.58, 0.69, 0.80, 0.90];
+    const markers = [];
+    for (let i = 0; i < ts.length; i++) {
+      const s = samplePath(ts[i]);
+      const sign = s.curvature >= 0 ? 1 : -1;
+      const outerSide = sign;
+      const innerSide = -sign;
+      const bank = state.channelHalf + 10;
+      const labelLift = state.channelHalf + 34;
+      const outerAnchorX = s.x + s.nx * bank * outerSide;
+      const outerAnchorY = s.y + s.ny * bank * outerSide;
+      const innerAnchorX = s.x + s.nx * bank * innerSide;
+      const innerAnchorY = s.y + s.ny * bank * innerSide;
+      markers.push({
+        label: labels[i],
+        kind: 'outer',
+        lineX: outerAnchorX,
+        lineY: outerAnchorY,
+        x: s.x + s.nx * labelLift * outerSide,
+        y: s.y + s.ny * labelLift * outerSide,
+        color: '#e33649'
+      });
+      markers.push({
+        label: labels[i].toLowerCase(),
+        kind: 'inner',
+        lineX: innerAnchorX,
+        lineY: innerAnchorY,
+        x: s.x + s.nx * labelLift * innerSide,
+        y: s.y + s.ny * labelLift * innerSide,
+        color: '#6b1f2d'
+      });
+    }
+    state.markers = markers;
+  }
+
+  function buildCrabs() {
+    const crabs = [];
+    const count = courseConfig().pathType === 'braided' ? 22 : 16;
+    for (let i = 0; i < count; i++) {
+      const t = 0.05 + i * (0.90 / Math.max(1, count - 1));
+      const path = state.paths[i % state.paths.length];
+      const s = samplePath(t, path);
+      const side = i % 2 === 0 ? 1 : -1;
+      const bankOffset = state.channelHalf + 78 + (i % 3) * 18;
+      crabs.push({
+        t,
+        x: s.x + s.nx * bankOffset * side,
+        y: s.y + s.ny * bankOffset * side + (i % 2 ? 18 : -12),
+        side,
+        hue: i % 2 === 0 ? '#ca6d44' : '#b55f37',
+        phase: i * 0.77,
+        size: 14 + (i % 4) * 1.5
+      });
+    }
+    state.crabs = crabs;
+  }
+
+  function pathToPath2D(path) {
+    const line = new Path2D();
+    path.forEach((p, i) => {
+      if (i === 0) line.moveTo(p.x, p.y);
+      else line.lineTo(p.x, p.y);
+    });
+    return line;
+  }
+
+  function buildTrackMap() {
+    const dpr = state.dpr;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.floor(state.worldW * dpr));
+    canvas.height = Math.max(2, Math.floor(state.worldH * dpr));
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const bg = c.createLinearGradient(0, 0, 0, state.worldH);
+    bg.addColorStop(0, '#d8f3ff');
+    bg.addColorStop(0.24, '#ffeab5');
+    bg.addColorStop(0.72, '#f0c67d');
+    bg.addColorStop(1, '#d79a58');
+    c.fillStyle = bg;
+    c.fillRect(0, 0, state.worldW, state.worldH);
+
+    c.save();
+    c.globalAlpha = 0.08;
+    for (let i = 0; i < 1600; i++) {
+      const x = (i * 97) % state.worldW;
+      const y = (i * 181) % state.worldH;
+      c.fillStyle = (i % 3 === 0) ? '#ba874b' : '#f6dfb1';
+      c.fillRect(x, y, 2, 2);
+    }
+    c.restore();
+
+    const lines = state.paths.map(pathToPath2D);
+    for (const line of lines) {
+      c.save();
+      c.strokeStyle = 'rgba(255,255,255,0.26)';
+      c.lineWidth = state.channelHalf * 2 + 28;
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+      c.stroke(line);
+      c.restore();
+
+      c.save();
+      c.strokeStyle = '#fbffff';
+      c.lineWidth = state.channelHalf * 2 + 6;
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+      c.stroke(line);
+      c.restore();
+
+      c.save();
+      c.strokeStyle = '#b7ebf7';
+      c.lineWidth = state.channelHalf * 2 - 10;
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+      c.stroke(line);
+      c.restore();
+    }
+
+    c.save();
+    c.strokeStyle = 'rgba(255,255,255,0.45)';
+    c.lineWidth = 6;
+    c.setLineDash([20, 22]);
+    c.stroke(pathToPath2D(state.path));
+    c.restore();
+
+    if (state.sandbars.length) {
+      c.save();
+      state.sandbars.forEach(bar => {
+        c.save();
+        c.translate(bar.x, bar.y);
+        c.rotate(bar.angle);
+        c.fillStyle = 'rgba(242, 197, 115, 0.94)';
+        c.beginPath();
+        c.ellipse(0, 0, state.channelHalf * bar.rx, state.channelHalf * bar.ry, 0, 0, Math.PI * 2);
+        c.fill();
+        c.fillStyle = 'rgba(220, 169, 92, 0.36)';
+        c.beginPath();
+        c.ellipse(-state.channelHalf * 0.08, -state.channelHalf * 0.04, state.channelHalf * bar.rx * 0.78, state.channelHalf * bar.ry * 0.64, 0, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      });
+      c.restore();
+    }
+
+    const start = samplePath(0.05);
+    const finish = samplePath(0.985);
+
+    c.save();
+    c.fillStyle = '#ffffff';
+    c.beginPath();
+    c.ellipse(start.x, start.y - 2, state.channelHalf * 1.12, state.channelHalf * 0.82, Math.atan2(start.ty, start.tx), 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+
+    c.save();
+    c.translate(finish.x, finish.y);
+    c.rotate(Math.atan2(finish.ty, finish.tx) + Math.PI / 2);
+    const stripW = state.channelHalf * 1.84;
+    const stripH = 18;
+    for (let i = 0; i < 10; i++) {
+      c.fillStyle = (i % 2 === 0) ? '#111' : '#fff';
+      c.fillRect(-stripW + i * (stripW * 2 / 10), -stripH, stripW * 2 / 10, stripH * 2);
+    }
+    c.restore();
+
+    state.trackCanvas = canvas;
+  }
+
+  function initGL() {
+    const gl = glCanvas.getContext('webgl', { antialias: true, alpha: false, premultipliedAlpha: false });
+    if (!gl) {
+      state.glReady = false;
+      return;
+    }
+
+    const vert = `
+      attribute vec2 a_pos;
+      varying vec2 v_uv;
+      void main() {
+        v_uv = (a_pos + 1.0) * 0.5;
+        gl_Position = vec4(a_pos, 0.0, 1.0);
+      }
+    `;
+
+    const frag = `
+      precision mediump float;
+      varying vec2 v_uv;
+      uniform sampler2D u_tex;
+      uniform vec2 u_viewSize;
+      uniform vec2 u_worldSize;
+      uniform float u_cameraY;
+      uniform float u_time;
+      void main() {
+        vec2 worldPos = vec2(v_uv.x * u_worldSize.x, (1.0 - v_uv.y) * u_viewSize.y + u_cameraY);
+        vec2 texUV = vec2(worldPos.x / u_worldSize.x, 1.0 - worldPos.y / u_worldSize.y);
+        vec4 base = texture2D(u_tex, texUV);
+        bool isWater = base.b > base.r + 0.03;
+        vec3 color = base.rgb;
+        if (isWater) {
+          float ripple1 = sin(worldPos.y * 0.043 - u_time * 2.0 + worldPos.x * 0.016);
+          float ripple2 = sin(worldPos.y * 0.085 + u_time * 1.4 - worldPos.x * 0.010);
+          float ripple3 = sin(worldPos.y * 0.026 - u_time * 1.0 - worldPos.x * 0.020);
+          float shimmer = 0.5 + 0.5 * (0.50 * ripple1 + 0.30 * ripple2 + 0.20 * ripple3);
+          vec3 bright = vec3(0.95, 1.00, 1.00);
+          vec3 deep = vec3(0.72, 0.92, 0.96);
+          color = mix(deep, bright, shimmer * 0.78 + 0.12);
+        }
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `;
+
+    function compile(type, source) {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error(gl.getShaderInfoLog(shader));
+        gl.deleteShader(shader);
+        return null;
+      }
+      return shader;
+    }
+
+    const vs = compile(gl.VERTEX_SHADER, vert);
+    const fs = compile(gl.FRAGMENT_SHADER, frag);
+    if (!vs || !fs) {
+      state.glReady = false;
+      return;
+    }
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error(gl.getProgramInfoLog(program));
+      state.glReady = false;
+      return;
+    }
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1,
+       1, -1,
+      -1,  1,
+       1,  1
+    ]), gl.STATIC_DRAW);
+
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+    state.gl = gl;
+    state.program = program;
+    state.buffer = buffer;
+    state.texture = texture;
+    state.uniforms = {
+      aPos: gl.getAttribLocation(program, 'a_pos'),
+      tex: gl.getUniformLocation(program, 'u_tex'),
+      viewSize: gl.getUniformLocation(program, 'u_viewSize'),
+      worldSize: gl.getUniformLocation(program, 'u_worldSize'),
+      cameraY: gl.getUniformLocation(program, 'u_cameraY'),
+      time: gl.getUniformLocation(program, 'u_time')
+    };
+    state.glReady = true;
+  }
+
+  function uploadTrackTexture() {
+    if (!state.glReady || !state.trackCanvas) return;
+    const gl = state.gl;
+    gl.bindTexture(gl.TEXTURE_2D, state.texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, state.trackCanvas);
+  }
+
+  function nearestOnPath(x, y, lastChannel, lastSeg) {
+    let best = null;
+    const searchPaths = (state.physicsPaths && state.physicsPaths.length) ? state.physicsPaths : state.paths;
+    const tryPath = (path, channelIndex, segCenter, radius = 34) => {
+      let start = 0;
+      let end = path.length - 2;
+      if (Number.isFinite(segCenter)) {
+        start = Math.max(0, segCenter - radius);
+        end = Math.min(path.length - 2, segCenter + radius);
+      } else {
+        const approx = clamp(Math.round((y / Math.max(1, state.worldH)) * (path.length - 2)), 0, path.length - 2);
+        start = Math.max(0, approx - radius);
+        end = Math.min(path.length - 2, approx + radius);
+      }
+      for (let i = start; i <= end; i++) {
+        const a = path[i];
+        const b = path[i + 1];
+        const abx = b.x - a.x;
+        const aby = b.y - a.y;
+        const ab2 = abx * abx + aby * aby || 1;
+        const f = clamp(((x - a.x) * abx + (y - a.y) * aby) / ab2, 0, 1);
+        const px = a.x + abx * f;
+        const py = a.y + aby * f;
+        const d2v = dist2(x, y, px, py);
+        if (!best || d2v < best.d2) {
+          const dir = normalize(abx, aby);
+          const nx = -dir.y;
+          const ny = dir.x;
+          best = {
+            d2: d2v,
+            px,
+            py,
+            tx: dir.x,
+            ty: dir.y,
+            nx,
+            ny,
+            signed: (x - px) * nx + (y - py) * ny,
+            progress: lerp(a.t, b.t, f),
+            seg: i,
+            channel: channelIndex
+          };
+        }
+      }
+    };
+
+    if (Number.isFinite(lastChannel) && searchPaths[lastChannel]) {
+      tryPath(searchPaths[lastChannel], lastChannel, lastSeg, 28);
+    }
+    for (let channel = 0; channel < searchPaths.length; channel++) {
+      if (channel === lastChannel) continue;
+      tryPath(searchPaths[channel], channel, null, 34);
+    }
+    if (!best || best.d2 > (state.channelHalf * state.channelHalf * 6.25)) {
+      const broadRadius = 96;
+      if (Number.isFinite(lastChannel) && searchPaths[lastChannel]) {
+        tryPath(searchPaths[lastChannel], lastChannel, lastSeg, broadRadius);
+      }
+      for (let channel = 0; channel < searchPaths.length; channel++) {
+        if (channel === lastChannel) continue;
+        tryPath(searchPaths[channel], channel, null, broadRadius);
+      }
+    }
+    if (!best) {
+      tryPath(state.path, 0, null, 96);
+    }
+    return best;
+  }
+
+  function makeRacers() {
+    const spawn = samplePath(0.05);
+    return RACER_SPECS.map((spec, i) => {
+      const row = Math.floor(i / 5);
+      const col = i % 5;
+      const lateral = (col - 2) * (state.channelHalf * 0.30) + randRange(-4, 4);
+      const longitudinal = row * 34 + randRange(0, 6);
+      return {
+        id: i,
+        name: spec.name,
+        color: spec.color,
+        radius: 15,
+        x: spawn.x + spawn.nx * lateral - spawn.tx * longitudinal,
+        y: spawn.y + spawn.ny * lateral - spawn.ty * longitudinal,
+        vx: 0,
+        vy: 0,
+        angle: Math.random() * Math.PI * 2,
+        mass: 1,
+        drag: randRange(0.255, 0.315),
+        power: randRange(0.988, 1.018),
+        wallBounce: randRange(0.008, 0.022),
+        slideBias: randRange(0.90, 1.08),
+        guideBias: randRange(0.92, 1.08),
+        speedBias: randRange(0.95, 1.06),
+        wanderAmp: randRange(10, 28),
+        wanderRate: randRange(0.7, 1.9),
+        wanderPhase: Math.random() * Math.PI * 2,
+        finishedTime: null,
+        finishPlace: null,
+        progress: 0,
+        lastSeg: null,
+        lastChannel: 0,
+        dnf: false,
+        hidden: false,
+        dnfTimer: 0,
+        nextFreakIn: randRange(6.5, 12.5),
+        freakType: null,
+        freakTimer: 0,
+        freakLabel: '',
+        freakLabelTimer: 0,
+        racePower: 1,
+        raceDrag: 1,
+        raceGuide: 1,
+        raceMax: 1,
+        slideRace: 1
+      };
+    });
+  }
+
+  function resetRace(keepOverlay) {
+    state.racers = makeRacers();
+    state.running = false;
+    state.finished = false;
+    state.placeCounter = 0;
+    state.startTime = 0;
+    state.accumulator = 0;
+    state.lastFrame = 0;
+    state.cameraY = 0;
+    state.cameraTargetY = 0;
+    state.previewScroll = 0;
+    previewSlider.value = '0';
+    finishBanner.classList.remove('show');
+    finishBanner.classList.remove('clickable');
+    finishBanner.textContent = '';
+    state.finishBannerAction = 'none';
+    if (!keepOverlay) openingOverlay.classList.remove('hidden');
+    buildOpeningText();
+    updateSeriesText();
+    updateLeaderboard(true);
+  }
+
+  function rebuildCourseGeometry() {
+    const cfg = courseConfig();
+    state.worldW = state.stageW;
+    state.worldH = state.stageH * cfg.worldScale;
+    state.channelHalf = clamp(state.stageW * 0.15 * cfg.channelScale, 68, 165);
+    buildCoursePaths();
+    buildMarkers();
+    buildCrabs();
+    buildTrackMap();
+    uploadTrackTexture();
+  }
+
+  function buildCurrentCourse(keepOverlay = true) {
+    rebuildCourseGeometry();
+    resetRace(keepOverlay);
+  }
+
+  function snapshotResizeState() {
+    if (!state.racers.length) return null;
+    const maxCamera = Math.max(1, state.worldH - state.stageH);
+    const maxPreview = Math.max(1, state.worldH - state.stageH);
+    return {
+      running: state.running,
+      finished: state.finished,
+      startedOnce: state.startedOnce,
+      previewMode: state.previewMode,
+      previewRatio: state.previewScroll / maxPreview,
+      cameraRatio: state.cameraY / maxCamera,
+      cameraTargetRatio: state.cameraTargetY / maxCamera,
+      startTime: state.startTime,
+      placeCounter: state.placeCounter,
+      accumulator: state.accumulator,
+      lastFrame: state.lastFrame,
+      selectedWinner: state.selectedWinner,
+      finishBannerText: finishBanner.textContent,
+      finishBannerAction: state.finishBannerAction,
+      finishBannerVisible: finishBanner.classList.contains('show'),
+      finishBannerClickable: finishBanner.classList.contains('clickable'),
+      openingHidden: openingOverlay.classList.contains('hidden'),
+      openingPreviewing: openingOverlay.classList.contains('previewing'),
+      selectionLocked: state.selectionLocked,
+      racers: state.racers.map(r => {
+        const near = nearestOnPath(r.x, r.y, r.lastChannel, r.lastSeg);
+        const tx = near ? near.tx : 0;
+        const ty = near ? near.ty : 1;
+        const nx = near ? near.nx : -1;
+        const ny = near ? near.ny : 0;
+        return {
+          progress: near ? near.progress : clamp(r.progress || 0, 0, 1),
+          channel: near ? near.channel : (Number.isFinite(r.lastChannel) ? r.lastChannel : 0),
+          signed: near ? near.signed : 0,
+          along: near ? ((r.x - near.px) * tx + (r.y - near.py) * ty) : 0,
+          vt: r.vx * tx + r.vy * ty,
+          vn: r.vx * nx + r.vy * ny,
+          finishedTime: r.finishedTime,
+          finishPlace: r.finishPlace,
+          lastSeg: r.lastSeg,
+          lastChannel: r.lastChannel,
+          dnf: r.dnf,
+          hidden: r.hidden,
+          dnfTimer: r.dnfTimer,
+          nextFreakIn: r.nextFreakIn,
+          freakType: r.freakType,
+          freakTimer: r.freakTimer,
+          freakLabel: r.freakLabel,
+          freakLabelTimer: r.freakLabelTimer,
+          racePower: r.racePower,
+          raceDrag: r.raceDrag,
+          raceGuide: r.raceGuide,
+          raceMax: r.raceMax,
+          slideRace: r.slideRace,
+          wallBounce: r.wallBounce,
+          wanderPhase: r.wanderPhase,
+          spin: r.spin,
+          radius: r.radius
+        };
+      })
+    };
+  }
+
+  function restoreResizeState(snapshot) {
+    if (!snapshot) return;
+    const guidePaths = (state.physicsPaths && state.physicsPaths.length) ? state.physicsPaths : state.paths;
+    state.racers = RACER_SPECS.map((spec, i) => {
+      const saved = snapshot.racers[i] || {};
+      const channel = clamp(saved.channel || 0, 0, Math.max(0, guidePaths.length - 1));
+      const path = guidePaths[channel] || state.path;
+      const s = pointAlong(path, clamp(saved.progress || 0, 0, 0.999));
+      const signed = clamp(saved.signed || 0, -state.channelHalf * 1.12, state.channelHalf * 1.12);
+      const along = clamp(saved.along || 0, -80, 80);
+      const vt = saved.vt || 0;
+      const vn = saved.vn || 0;
+      return {
+        id: i,
+        name: spec.name,
+        color: spec.color,
+        radius: saved.radius || 15,
+        x: s.x + s.nx * signed + s.tx * along,
+        y: s.y + s.ny * signed + s.ty * along,
+        vx: s.tx * vt + s.nx * vn,
+        vy: s.ty * vt + s.ny * vn,
+        wallBounce: Number.isFinite(saved.wallBounce) ? saved.wallBounce : 0.18,
+        spin: saved.spin || 0,
+        finishedTime: saved.finishedTime ?? null,
+        finishPlace: saved.finishPlace ?? null,
+        progress: saved.progress || 0,
+        lastSeg: Number.isFinite(saved.lastSeg) ? saved.lastSeg : null,
+        lastChannel: Number.isFinite(saved.lastChannel) ? saved.lastChannel : channel,
+        dnf: !!saved.dnf,
+        hidden: !!saved.hidden,
+        dnfTimer: saved.dnfTimer || 0,
+        nextFreakIn: Number.isFinite(saved.nextFreakIn) ? saved.nextFreakIn : randRange(6.5, 12.5),
+        freakType: saved.freakType || null,
+        freakTimer: saved.freakTimer || 0,
+        freakLabel: saved.freakLabel || '',
+        freakLabelTimer: saved.freakLabelTimer || 0,
+        racePower: Number.isFinite(saved.racePower) ? saved.racePower : 1,
+        raceDrag: Number.isFinite(saved.raceDrag) ? saved.raceDrag : 1,
+        raceGuide: Number.isFinite(saved.raceGuide) ? saved.raceGuide : 1,
+        raceMax: Number.isFinite(saved.raceMax) ? saved.raceMax : 1,
+        slideRace: Number.isFinite(saved.slideRace) ? saved.slideRace : 1,
+        wanderPhase: Number.isFinite(saved.wanderPhase) ? saved.wanderPhase : Math.random() * Math.PI * 2
+      };
+    });
+
+    state.running = snapshot.running;
+    state.finished = snapshot.finished;
+    state.startedOnce = snapshot.startedOnce;
+    state.previewMode = snapshot.previewMode;
+    state.startTime = snapshot.startTime;
+    state.placeCounter = snapshot.placeCounter;
+    state.accumulator = snapshot.accumulator;
+    state.lastFrame = snapshot.lastFrame;
+    state.selectedWinner = snapshot.selectedWinner;
+    state.selectionLocked = snapshot.selectionLocked;
+
+    const maxCamera = Math.max(0, state.worldH - state.stageH);
+    const maxPreview = Math.max(0, state.worldH - state.stageH);
+    state.cameraY = clamp((snapshot.cameraRatio || 0) * maxCamera, 0, maxCamera);
+    state.cameraTargetY = clamp((snapshot.cameraTargetRatio || snapshot.cameraRatio || 0) * maxCamera, 0, maxCamera);
+    state.previewScroll = clamp((snapshot.previewRatio || 0) * maxPreview, 0, maxPreview);
+    previewSlider.value = String(Math.round((state.previewScroll / Math.max(1, maxPreview)) * 1000));
+
+    finishBanner.textContent = snapshot.finishBannerText || '';
+    finishBanner.classList.toggle('show', !!snapshot.finishBannerVisible);
+    finishBanner.classList.toggle('clickable', !!snapshot.finishBannerClickable);
+    state.finishBannerAction = snapshot.finishBannerAction || 'none';
+    openingOverlay.classList.toggle('hidden', !!snapshot.openingHidden);
+    openingOverlay.classList.toggle('previewing', !!snapshot.openingPreviewing);
+
+    buildOpeningText();
+    updateSeriesText();
+    updateLeaderboard(true);
+  }
+
+  function launchRace() {
+    const cfg = courseConfig();
+    const spawn = samplePath(0.05);
+    state.racers.forEach((r, i) => {
+      const lane = ((i % 5) - 2) * 9.5 + randRange(-3.5, 3.5);
+      const launch = (cfg.launchBase + randRange(-cfg.launchStep * 4, cfg.launchStep * 4)) * randRange(0.95, 1.07);
+      r.racePower = randRange(0.96, 1.05);
+      r.raceDrag = randRange(0.94, 1.08);
+      r.raceGuide = randRange(0.92, 1.08);
+      r.raceMax = randRange(0.96, 1.05);
+      r.slideRace = randRange(0.92, 1.10);
+      r.wanderPhase = Math.random() * Math.PI * 2;
+      r.vx = spawn.tx * launch + spawn.nx * lane * 0.66;
+      r.vy = (cfg.startDown + spawn.ty * launch) * randRange(0.97, 1.05);
+      r.finishedTime = null;
+      r.finishPlace = null;
+      r.progress = 0;
+      r.lastSeg = null;
+      r.lastChannel = 0;
+      r.dnf = false;
+      r.hidden = false;
+      r.dnfTimer = 0;
+      r.nextFreakIn = randRange(6.5, 12.5);
+      r.freakType = null;
+      r.freakTimer = 0;
+      r.freakLabel = '';
+      r.freakLabelTimer = 0;
+      const row = Math.floor(i / 5);
+      const col = i % 5;
+      const lateral = (col - 2) * (state.channelHalf * 0.30) + randRange(-5, 5);
+      const longitudinal = row * 34 + randRange(0, 10);
+      r.x = spawn.x + spawn.nx * lateral - spawn.tx * longitudinal;
+      r.y = spawn.y + spawn.ny * lateral - spawn.ty * longitudinal;
+    });
+    state.running = true;
+    state.finished = false;
+    if (!state.selectionLocked) state.selectionLocked = true;
+    state.startedOnce = true;
+    state.previewMode = false;
+    state.previewScroll = 0;
+    state.cameraY = 0;
+    state.cameraTargetY = 0;
+    state.startTime = performance.now();
+    state.lastFrame = 0;
+    state.accumulator = 0;
+    openingOverlay.classList.remove('previewing');
+    openingOverlay.classList.add('hidden');
+    finishBanner.classList.remove('show');
+    finishBanner.classList.remove('clickable');
+    state.finishBannerAction = 'none';
+    updateSeriesText();
+    updateLeaderboard(true);
+    if (compactMedia.matches) setSidebarOpen(false);
+  }
+
+  function beginCurrentCourse() {
+    if (state.championshipComplete) {
+      restartChampionship();
+      return;
+    }
+    if (state.running) return;
+    if (state.finished) {
+      resetRace(true);
+    }
+    launchRace();
+  }
+
+  function handleTopButton() {
+    if (state.running) return;
+    if (state.championshipComplete) {
+      restartChampionship();
+      return;
+    }
+    if (!state.finished && !state.startedOnce && state.currentCourse === 0) {
+      launchRace();
+      return;
+    }
+    if (!state.finished) {
+      launchRace();
+      return;
+    }
+    if (state.currentCourse < COURSES.length - 1) {
+      state.currentCourse += 1;
+      setPreviewMode(false);
+      buildCurrentCourse(false);
+      finishBanner.textContent = compactMedia.matches ? `${courseConfig().name} loaded. Tap this banner to start.` : `${courseConfig().name} loaded. Preview or start when ready.`;
+      finishBanner.classList.add('show');
+      finishBanner.classList.toggle('clickable', compactMedia.matches);
+      state.finishBannerAction = compactMedia.matches ? 'start' : 'none';
+      if (compactMedia.matches) setSidebarOpen(true);
+    }
+  }
+
+  function triggerFreakAccident(r, near) {
+    const roll = Math.random();
+    if (roll < 0.53) {
+      r.freakType = 'slow';
+      r.freakTimer = randRange(0.45, 0.85);
+      r.freakLabel = 'FREAK ACCIDENT · SLOW';
+      r.freakLabelTimer = 1.0;
+      return;
+    }
+    if (roll < 0.97) {
+      r.freakType = 'boost';
+      r.freakTimer = randRange(0.50, 0.95);
+      r.freakLabel = 'FREAK ACCIDENT · BOOST';
+      r.freakLabelTimer = 1.0;
+      return;
+    }
+    const side = (Math.sign(near.signed) || (Math.random() < 0.5 ? -1 : 1));
+    r.dnf = true;
+    r.freakType = 'dnf';
+    r.dnfTimer = 0.65;
+    r.freakLabel = 'FREAK ACCIDENT · DNF';
+    r.freakLabelTimer = 1.15;
+    r.vx = near.tx * randRange(90, 170) + near.nx * side * randRange(360, 560);
+    r.vy = near.ty * randRange(160, 260) - randRange(140, 260);
+    r.finishedTime = Infinity;
+    r.finishPlace = null;
+  }
+
+  function collideWithWalls(r) {
+    const near = nearestOnPath(r.x, r.y, r.lastChannel, r.lastSeg);
+    r.lastSeg = near.seg;
+    r.lastChannel = near.channel;
+    r.progress = Math.max(r.progress, near.progress - 0.002);
+    const cfg = courseConfig();
+    const allowed = state.channelHalf - r.radius - 2;
+    const softBand = allowed - 8;
+
+    if (Math.abs(near.signed) > softBand) {
+      const s = Math.sign(near.signed) || 1;
+      const outNx = near.nx * s;
+      const outNy = near.ny * s;
+      const overSoft = Math.abs(near.signed) - softBand;
+      const repel = clamp(overSoft / 16, 0, 1) * (cfg.bankRepelStrength * 0.48 + 8);
+      r.vx -= outNx * repel;
+      r.vy -= outNy * repel;
+    }
+
+    if (Math.abs(near.signed) > allowed) {
+      const s = Math.sign(near.signed) || 1;
+      const outNx = near.nx * s;
+      const outNy = near.ny * s;
+      const settleInset = 4;
+      r.x = near.px + outNx * (allowed - settleInset);
+      r.y = near.py + outNy * (allowed - settleInset);
+
+      let vn = r.vx * outNx + r.vy * outNy;
+      let vt = r.vx * near.tx + r.vy * near.ty;
+
+      if (vn > 0) {
+        vn = -(0.8 + vn * (0.008 + r.wallBounce));
+      } else {
+        vn = Math.max(vn - 1.4, -3.2);
+      }
+
+      vt *= 0.9996;
+      const minSlide = cfg.minSlide * (r.slideBias || 1) * (r.slideRace || 1);
+      if (vt < minSlide) vt = minSlide;
+
+      r.vx = near.tx * vt + outNx * vn;
+      r.vy = near.ty * vt + outNy * vn;
+      if (r.vy < -6) r.vy = -6;
+    }
+  }
+
+  function resolvePair(a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    let d = Math.hypot(dx, dy);
+    const minD = a.radius + b.radius;
+    if (d === 0) d = 0.0001;
+    if (d >= minD) return;
+
+    const nx = dx / d;
+    const ny = dy / d;
+    const overlap = minD - d;
+    const sep = overlap * 0.5;
+    a.x -= nx * sep;
+    a.y -= ny * sep;
+    b.x += nx * sep;
+    b.y += ny * sep;
+
+    const rvx = b.vx - a.vx;
+    const rvy = b.vy - a.vy;
+    const rel = rvx * nx + rvy * ny;
+    if (rel < 0) {
+      const e = 0.08;
+      const j = -(1 + e) * rel / (a.mass + b.mass);
+      a.vx -= j * nx * b.mass;
+      a.vy -= j * ny * b.mass;
+      b.vx += j * nx * a.mass;
+      b.vy += j * ny * a.mass;
+    }
+  }
+
+  function finishCurrentCourse() {
+    const finishers = state.racers.filter(r => !r.dnf).slice().sort((a, b) => a.finishPlace - b.finishPlace);
+    const dnfs = state.racers.filter(r => r.dnf).slice().sort((a, b) => b.progress - a.progress);
+    const ordered = finishers.concat(dnfs);
+    ordered.forEach((r, idx) => {
+      if (!r.dnf) {
+        state.championshipPoints[r.id] += COURSE_POINTS[idx] || 0;
+        state.aggregateTime[r.id] += r.finishedTime || 0;
+        state.lastCoursePlace[r.id] = idx + 1;
+        state.lastCourseTime[r.id] = r.finishedTime;
+      } else {
+        state.lastCoursePlace[r.id] = 'DNF';
+        state.lastCourseTime[r.id] = null;
+      }
+    });
+    state.courseResults[state.currentCourse] = ordered.map((r, idx) => ({
+      id: r.id,
+      place: r.dnf ? 'DNF' : (r.finishPlace || (idx + 1)),
+      time: r.dnf ? null : r.finishedTime,
+      dnf: !!r.dnf
+    }));
+    state.running = false;
+    state.finished = true;
+    const winner = finishers[0] || ordered[0];
+    const dnfCount = dnfs.length;
+    if (state.currentCourse < COURSES.length - 1) {
+      const actionText = compactMedia.matches ? ' Tap this banner for Next Course.' : ' Click Next Course.';
+      finishBanner.textContent = `${winner.name} wins ${courseConfig().name} in ${fmtTime(winner.finishedTime)}.${dnfCount ? ` ${dnfCount} DNF.` : ''}${actionText}`;
+      finishBanner.classList.add('show');
+      finishBanner.classList.add('clickable');
+      state.finishBannerAction = 'next';
+    } else {
+      finishBanner.textContent = `${winner.name} wins the final course in ${fmtTime(winner.finishedTime)}.${dnfCount ? ` ${dnfCount} DNF.` : ''}`;
+      finishBanner.classList.add('show');
+      finishBanner.classList.remove('clickable');
+      state.finishBannerAction = 'none';
+      showChampionshipOverlay();
+    }
+    updateSeriesText();
+    updateLeaderboard(true);
+  }
+
+  function updatePhysics(dt) {
+    const cfg = courseConfig();
+    const gravityY = cfg.gravityY;
+    const guideStrength = cfg.guideStrength;
+    const bankRepelStrength = cfg.bankRepelStrength;
+    const maxSpeed = cfg.maxSpeed;
+    const raceTime = performance.now() - state.startTime;
+
+    for (const r of state.racers) {
+      if (r.hidden) continue;
+      if (r.dnf) {
+        r.dnfTimer -= dt;
+        r.vy += gravityY * 0.36 * dt;
+        r.x += r.vx * dt;
+        r.y += r.vy * dt;
+        r.angle += (Math.hypot(r.vx, r.vy) / r.radius) * dt * 0.14;
+        if (r.dnfTimer <= 0 || r.x < -220 || r.x > state.stageW + 220 || r.y < -220 || r.y > state.worldH + 220) {
+          r.hidden = true;
+        }
+        if (r.freakLabelTimer > 0) r.freakLabelTimer -= dt;
+        continue;
+      }
+      if (r.finishedTime != null) continue;
+      const near = nearestOnPath(r.x, r.y, r.lastChannel, r.lastSeg);
+      r.lastSeg = near.seg;
+      r.lastChannel = near.channel;
+      r.progress = Math.max(r.progress, near.progress);
+
+      r.nextFreakIn -= dt;
+      if (r.freakLabelTimer > 0) r.freakLabelTimer -= dt;
+      if (r.freakType && r.freakType !== 'dnf') {
+        r.freakTimer -= dt;
+        if (r.freakTimer <= 0) {
+          r.freakType = null;
+          r.freakTimer = 0;
+        }
+      }
+      if (r.nextFreakIn <= 0 && r.progress > 0.08 && r.progress < 0.965) {
+        if (Math.random() < 0.22) {
+          triggerFreakAccident(r, near);
+          r.nextFreakIn = randRange(8.0, 16.0);
+          if (r.dnf) continue;
+        } else {
+          r.nextFreakIn = randRange(6.0, 12.0);
+        }
+      }
+
+      const along = r.vx * near.tx + r.vy * near.ty;
+      const guideTarget = 232 * (r.guideBias || 1);
+      const guide = clamp((guideTarget - along) * 0.62, 0, guideStrength * (r.raceGuide || 1));
+      r.vx += near.tx * guide * dt;
+      r.vy += near.ty * guide * dt;
+
+      const wander = Math.sin(r.wanderPhase + raceTime * 0.001 * (r.wanderRate || 1)) * (r.wanderAmp || 0);
+      r.vx += near.nx * wander * dt;
+      r.vy += near.ny * wander * dt;
+
+      const edgeStart = state.channelHalf - r.radius - 16;
+      const edgeDist = Math.abs(near.signed);
+      if (edgeDist > edgeStart) {
+        const s = Math.sign(near.signed) || 1;
+        const edgePush = clamp((edgeDist - edgeStart) / 18, 0, 1) * bankRepelStrength * 0.62;
+        r.vx -= near.nx * s * edgePush * dt;
+        r.vy -= near.ny * s * edgePush * dt;
+      }
+
+      let eventPower = 1;
+      let eventDrag = 1;
+      let eventMax = 1;
+      let eventSlide = 1;
+      if (r.freakType === 'slow') {
+        eventPower = 0.38;
+        eventDrag = 3.0;
+        eventMax = 0.55;
+        eventSlide = 0.74;
+      } else if (r.freakType === 'boost') {
+        eventPower = 1.18;
+        eventDrag = 0.72;
+        eventMax = 1.26;
+        eventSlide = 1.10;
+        r.vx += near.tx * 165 * dt;
+        r.vy += near.ty * 165 * dt;
+      }
+
+      r.vy += gravityY * r.power * (r.racePower || 1) * eventPower * dt;
+
+      const liveDrag = r.drag * (r.raceDrag || 1) * eventDrag;
+      const dragX = Math.exp(-(liveDrag + 0.18) * dt);
+      const dragY = Math.exp(-(liveDrag * 0.60) * dt);
+      r.vx *= dragX;
+      r.vy *= dragY;
+      if (r.vy < -24) r.vy = -24;
+
+      const speed = Math.hypot(r.vx, r.vy);
+      const racerMax = maxSpeed * (r.speedBias || 1) * (r.raceMax || 1) * eventMax;
+      if (speed > racerMax) {
+        const s = racerMax / speed;
+        r.vx *= s;
+        r.vy *= s;
+      }
+
+      r.x += r.vx * dt;
+      r.y += r.vy * dt;
+      r.angle += (Math.hypot(r.vx, r.vy) / r.radius) * dt * 0.17;
+      collideWithWalls(r);
+      if (eventSlide !== 1) {
+        r.vx *= eventSlide;
+        r.vy *= eventSlide;
+      }
+    }
+
+    for (let i = 0; i < state.racers.length; i++) {
+      for (let j = i + 1; j < state.racers.length; j++) {
+        const a = state.racers[i];
+        const b = state.racers[j];
+        if (a.dnf || b.dnf || a.hidden || b.hidden) continue;
+        if (a.finishedTime != null && b.finishedTime != null) continue;
+        resolvePair(a, b);
+      }
+    }
+
+    for (const r of state.racers) {
+      if (r.dnf || r.hidden || r.finishedTime != null) continue;
+      collideWithWalls(r);
+      if (r.progress >= 0.986 || r.y >= state.worldH - 120) {
+        r.finishedTime = performance.now() - state.startTime;
+        r.finishPlace = ++state.placeCounter;
+      }
+    }
+
+    if (state.racers.every(r => r.finishedTime != null || r.dnf)) {
+      finishCurrentCourse();
+    }
+
+    const target = state.racers[state.selectedWinner] || state.racers[0];
+    const fallback = state.racers.find(r => !r.hidden && !r.dnf && r.finishedTime == null) || target;
+    const follow = (target && !target.hidden) ? target : fallback;
+    const followY = follow ? follow.y : 0;
+    state.cameraTargetY = clamp(followY - state.stageH * 0.34, 0, state.worldH - state.stageH);
+    state.cameraY += (state.cameraTargetY - state.cameraY) * Math.min(1, dt * 4.2);
+  }
+
+  function drawFallbackTrack() {
+    ctx.save();
+    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+    ctx.clearRect(0, 0, state.stageW, state.stageH);
+    const g = ctx.createLinearGradient(0, 0, 0, state.stageH);
+    g.addColorStop(0, '#d8f3ff');
+    g.addColorStop(0.25, '#ffeab5');
+    g.addColorStop(1, '#d79a58');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, state.stageW, state.stageH);
+    ctx.restore();
+  }
+
+  function renderTrack(timeSec) {
+    if (!state.glReady) {
+      drawFallbackTrack();
+      return;
+    }
+    const gl = state.gl;
+    gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(state.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, state.buffer);
+    gl.enableVertexAttribArray(state.uniforms.aPos);
+    gl.vertexAttribPointer(state.uniforms.aPos, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, state.texture);
+    gl.uniform1i(state.uniforms.tex, 0);
+    gl.uniform2f(state.uniforms.viewSize, state.stageW, state.stageH);
+    gl.uniform2f(state.uniforms.worldSize, state.worldW, state.worldH);
+    gl.uniform1f(state.uniforms.cameraY, state.cameraY);
+    gl.uniform1f(state.uniforms.time, timeSec);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  function drawMarkers() {
+    ctx.save();
+    ctx.translate(0, -state.cameraY);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 18px "Courier New", monospace';
+    for (const m of state.markers) {
+      if (m.y < state.cameraY - 50 || m.y > state.cameraY + state.stageH + 50) continue;
+      ctx.beginPath();
+      ctx.moveTo(m.lineX, m.lineY);
+      ctx.lineTo(m.x, m.y);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.80)';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.fillStyle = m.color;
+      ctx.arc(m.x, m.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.94)';
+      ctx.stroke();
+
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,0.72)';
+      ctx.strokeText(m.label, m.x, m.y - 18);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(m.label, m.x, m.y - 18);
+    }
+    ctx.restore();
+  }
+
+  function drawCrabs(timeSec) {
+    ctx.save();
+    ctx.translate(0, -state.cameraY);
+    for (const crab of state.crabs) {
+      if (crab.y < state.cameraY - 80 || crab.y > state.cameraY + state.stageH + 80) continue;
+      const wiggle = Math.sin(timeSec * 3.0 + crab.phase) * 5;
+      const leg = Math.sin(timeSec * 8.0 + crab.phase) * 0.55;
+      ctx.save();
+      ctx.translate(crab.x + wiggle * crab.side * 0.6, crab.y + Math.sin(timeSec * 2.2 + crab.phase) * 2.0);
+      ctx.scale(crab.side, 1);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#6b2f18';
+      ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) {
+        if (i === 0) continue;
+        ctx.beginPath();
+        ctx.moveTo(i * 3, 3);
+        ctx.lineTo(i * 8, 8 + Math.sin(leg + i) * 4);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.fillStyle = crab.hue;
+      ctx.ellipse(0, 0, crab.size, crab.size * 0.74, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(crab.size * 0.52, -2);
+      ctx.lineTo(crab.size * 1.05, -10 + Math.sin(leg) * 3);
+      ctx.lineTo(crab.size * 1.30, -4 + Math.sin(leg) * 2);
+      ctx.strokeStyle = '#6b2f18';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-crab.size * 0.52, -2);
+      ctx.lineTo(-crab.size * 1.05, -10 - Math.sin(leg) * 3);
+      ctx.lineTo(-crab.size * 1.30, -4 - Math.sin(leg) * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.fillStyle = '#2a2116';
+      ctx.arc(-4, -2, 1.5, 0, Math.PI * 2);
+      ctx.arc(4, -2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawRacers() {
+    ctx.save();
+    ctx.translate(0, -state.cameraY);
+    const racers = state.racers.slice().sort((a, b) => a.y - b.y);
+    for (const r of racers) {
+      if (r.hidden) continue;
+      if (r.y < state.cameraY - 90 || r.y > state.cameraY + state.stageH + 90) continue;
+      ctx.save();
+      ctx.translate(r.x, r.y);
+      ctx.shadowColor = 'rgba(0,0,0,0.28)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 4;
+      ctx.beginPath();
+      ctx.fillStyle = r.color;
+      ctx.arc(0, 0, r.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(255,255,255,0.34)';
+      ctx.arc(-r.radius * 0.34, -r.radius * 0.34, r.radius * 0.34, 0, Math.PI * 2);
+      ctx.fill();
+
+      const dotX = Math.cos(r.angle) * r.radius * 0.60;
+      const dotY = Math.sin(r.angle) * r.radius * 0.60;
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.arc(dotX, dotY, r.radius * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (r.id === state.selectedWinner) {
+        ctx.beginPath();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(22, 92, 150, 0.9)';
+        ctx.arc(0, 0, r.radius + 5, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.font = 'bold 11px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillText(initials(r.name), 0, 0.5);
+
+      if (r.freakLabelTimer > 0) {
+        ctx.font = 'bold 10px Arial';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(0,0,0,0.62)';
+        ctx.strokeText(r.freakLabel, 0, -r.radius - 14);
+        ctx.fillStyle = r.freakType === 'boost' ? '#ffe66d' : (r.freakType === 'slow' ? '#ffd6a5' : '#ffffff');
+        ctx.fillText(r.freakLabel, 0, -r.radius - 14);
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawWorldLabels() {
+    const start = samplePath(0.05);
+    const finish = samplePath(0.985);
+    ctx.save();
+    ctx.translate(0, -state.cameraY);
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const drawTag = (x, y, text) => {
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(0,0,0,0.72)';
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, x, y);
+    };
+    drawTag(start.x, start.y - state.channelHalf * 1.05, 'START');
+    drawTag(finish.x, finish.y - state.channelHalf * 1.10, 'FINISH');
+    const label = courseConfig().name.toUpperCase().replace(' · ', '  ');
+    drawTag(state.stageW * 0.5, state.cameraY + 24, label);
+    ctx.restore();
+  }
+
+  function leaderboardStatus(entry) {
+    const live = entry.live;
+    if (state.running && live) {
+      if (live.dnf) return 'DNF';
+      if (live.finishPlace != null) return `P${live.finishPlace}`;
+      return `${Math.round(live.progress * 100)}%`;
+    }
+    if ((state.finished || state.courseResults.length > 0) && entry.lastPlace != null) {
+      if (entry.lastPlace === 'DNF') return 'DNF';
+      return `P${entry.lastPlace}`;
+    }
+    return 'Ready';
+  }
+
+  function updateLeaderboard(force) {
+    const now = performance.now();
+    if (!force && now - state.lastBoardUpdate < 60) return;
+    state.lastBoardUpdate = now;
+    const ordered = championshipStandings();
+    leaderRows.innerHTML = ordered.map((r, idx) => `
+      <div class="row${r.id === state.selectedWinner ? ' selected' : ''}">
+        <div class="pos">${idx + 1}</div>
+        <div class="dot" style="background:${r.color}"></div>
+        <div class="name">${r.name}</div>
+        <div class="pts">${r.points}</div>
+        <div class="status">${leaderboardStatus(r)}</div>
+      </div>
+    `).join('');
+  }
+
+  function currentCameraY() {
+    return state.previewMode ? state.previewScroll : state.cameraY;
+  }
+
+  function drawConfettiFrame(dt) {
+    if (!state.championshipComplete) return;
+    const dpr = state.dpr;
+    const w = Math.floor(window.innerWidth * dpr);
+    const h = Math.floor(window.innerHeight * dpr);
+    if (celebrationCanvas.width !== w || celebrationCanvas.height !== h) {
+      celebrationCanvas.width = w;
+      celebrationCanvas.height = h;
+      celebrationCanvas.style.width = window.innerWidth + 'px';
+      celebrationCanvas.style.height = window.innerHeight + 'px';
+    }
+    const c = celebrationCtx;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    c.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    for (const p of state.confetti) {
+      p.y += p.vy * dt;
+      p.x += p.vx * dt;
+      p.rot += p.spin * dt;
+      p.vy += 180 * dt;
+      if (p.y > window.innerHeight + 30) {
+        p.y = -20 - Math.random() * 120;
+        p.x = Math.random() * window.innerWidth;
+        p.vy = 40 + Math.random() * 110;
+      }
+      c.save();
+      c.translate(p.x, p.y);
+      c.rotate(p.rot);
+      c.fillStyle = p.color;
+      c.fillRect(-p.w * 0.5, -p.h * 0.5, p.w, p.h);
+      c.restore();
+    }
+  }
+
+  function render(ts, dt = 0) {
+    const timeSec = ts * 0.001;
+    state.cameraY = clamp(currentCameraY(), 0, state.worldH - state.stageH);
+    renderTrack(timeSec);
+    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+    ctx.clearRect(0, 0, state.stageW, state.stageH);
+    drawMarkers();
+    drawWorldLabels();
+    drawCrabs(timeSec);
+    drawRacers();
+    updateLeaderboard(false);
+    drawConfettiFrame(dt);
+  }
+
+  function frame(ts) {
+    if (!state.lastFrame) state.lastFrame = ts;
+    let dt = (ts - state.lastFrame) / 1000;
+    state.lastFrame = ts;
+    dt = Math.min(dt, 0.05);
+
+    if (state.running) {
+      state.accumulator += dt;
+      const fixed = 1 / 120;
+      while (state.accumulator >= fixed) {
+        updatePhysics(fixed);
+        state.accumulator -= fixed;
+      }
+    }
+
+    render(ts, dt);
+    requestAnimationFrame(frame);
+  }
+
+  function initConfetti() {
+    state.confetti = Array.from({ length: 180 }, () => ({
+      x: Math.random() * window.innerWidth,
+      y: -Math.random() * window.innerHeight,
+      vx: -80 + Math.random() * 160,
+      vy: 40 + Math.random() * 120,
+      w: 6 + Math.random() * 7,
+      h: 10 + Math.random() * 9,
+      rot: Math.random() * Math.PI * 2,
+      spin: -6 + Math.random() * 12,
+      color: RACER_SPECS[Math.floor(Math.random() * RACER_SPECS.length)].color
+    }));
+  }
+
+  function showChampionshipOverlay() {
+    state.championshipComplete = true;
+    initConfetti();
+    const standings = championshipStandings();
+    const top3 = [standings[1], standings[0], standings[2]];
+    podiumRow.innerHTML = top3.map((entry, idx) => {
+      const places = ['second', 'first', 'third'];
+      const labels = ['2nd', '1st', '3rd'];
+      return `
+        <div class="podiumStep ${places[idx]}">
+          <div class="podiumBall" style="background:${entry.color}"></div>
+          <div class="podiumPlace">${labels[idx]}</div>
+          <div class="podiumName">${entry.name}</div>
+          <div class="podiumMeta">${entry.points} pts · ${fmtTime(entry.aggregateTime)}</div>
+        </div>
+      `;
+    }).join('');
+    const champion = standings[0];
+    const selectedOnPodium = standings.slice(0, 3).some(r => r.id === state.selectedWinner);
+    podiumSummary.textContent = `${champion.name} takes the championship with ${champion.points} points across ${COURSES.length} courses. Standings break ties by cumulative race time.`;
+    sadBackdropBall.classList.toggle('show', !selectedOnPodium);
+    sadBackdropBall.style.setProperty('--sad-ball', RACER_SPECS[state.selectedWinner].color);
+    sadBackdropBall.style.left = '19%';
+    sadBackdropBall.style.top = '58%';
+    championshipOverlay.classList.add('show');
+    finishBanner.textContent = compactMedia.matches ? 'Championship complete. Tap this banner to restart.' : 'Championship complete.';
+    finishBanner.classList.add('show');
+    finishBanner.classList.toggle('clickable', compactMedia.matches);
+    state.finishBannerAction = compactMedia.matches ? 'restart' : 'none';
+    updateSeriesText();
+  }
+
+  function hideChampionshipOverlay() {
+    championshipOverlay.classList.remove('show');
+  }
+
+  function restartChampionship() {
+    state.currentCourse = 0;
+    state.championshipPoints.fill(0);
+    state.aggregateTime.fill(0);
+    state.lastCoursePlace.fill(null);
+    state.lastCourseTime.fill(null);
+    state.courseResults = [];
+    state.championshipComplete = false;
+    state.startedOnce = false;
+    state.selectionLocked = false;
+    hideChampionshipOverlay();
+    buildCurrentCourse(false);
+  }
+
+  function resizeCanvases() {
+    const preserveRace = state.racers.length && (state.running || state.finished || state.startedOnce || state.selectionLocked);
+    const snapshot = preserveRace ? snapshotResizeState() : null;
+
+    state.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    state.stageW = stage.clientWidth;
+    state.stageH = stage.clientHeight;
+
+    glCanvas.width = Math.max(2, Math.floor(state.stageW * state.dpr));
+    glCanvas.height = Math.max(2, Math.floor(state.stageH * state.dpr));
+    overlayCanvas.width = Math.max(2, Math.floor(state.stageW * state.dpr));
+    overlayCanvas.height = Math.max(2, Math.floor(state.stageH * state.dpr));
+    glCanvas.style.width = overlayCanvas.style.width = state.stageW + 'px';
+    glCanvas.style.height = overlayCanvas.style.height = state.stageH + 'px';
+
+    if (!state.gl && glCanvas.getContext) initGL();
+    if (state.glReady) state.gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+
+    if (snapshot) {
+      rebuildCourseGeometry();
+      restoreResizeState(snapshot);
+    } else {
+      buildCurrentCourse(true);
+      buildOpeningText();
+      updateSeriesText();
+    }
+    buildPickGrid();
+    syncResponsiveSidebar(true);
+    render(0, 0);
+  }
+
+  function setPreviewMode(on) {
+    state.previewMode = on;
+    if (on) {
+      openingOverlay.classList.add('previewing');
+    } else {
+      openingOverlay.classList.remove('previewing');
+      state.previewScroll = 0;
+      previewSlider.value = '0';
+    }
+  }
+
+  function updatePreviewFromSlider() {
+    const maxScroll = Math.max(0, state.worldH - state.stageH);
+    state.previewScroll = maxScroll * (Number(previewSlider.value) / 1000);
+  }
+
+  function setSidebarOpen(open) {
+    if (!compactMedia.matches) {
+      state.sidebarOpen = true;
+      sidebar.classList.add('open');
+      mobileStandingsToggle.classList.remove('active');
+      mobileStandingsToggle.textContent = 'Show Standings';
+      return;
+    }
+    state.sidebarOpen = !!open;
+    sidebar.classList.toggle('open', state.sidebarOpen);
+    mobileStandingsToggle.classList.toggle('active', state.sidebarOpen);
+    mobileStandingsToggle.textContent = state.sidebarOpen ? 'Hide Standings' : 'Show Standings';
+  }
+
+  function syncResponsiveSidebar(preserveState = true) {
+    if (!compactMedia.matches) {
+      setSidebarOpen(true);
+      return;
+    }
+    if (!preserveState) {
+      setSidebarOpen(false);
+      return;
+    }
+    setSidebarOpen(state.sidebarOpen);
+  }
+
+  startButton.addEventListener('click', beginCurrentCourse);
+  topStartButton.addEventListener('click', handleTopButton);
+  showOverlayButton.addEventListener('click', () => {
+    openingOverlay.classList.remove('hidden');
+    setPreviewMode(false);
+    if (compactMedia.matches) setSidebarOpen(false);
+  });
+  mobileStandingsToggle.addEventListener('click', () => {
+    setSidebarOpen(!state.sidebarOpen);
+  });
+  finishBanner.addEventListener('click', () => {
+    if (state.running || !finishBanner.classList.contains('show')) return;
+    if (state.finishBannerAction === 'next') {
+      handleTopButton();
+    } else if (state.finishBannerAction === 'restart') {
+      restartChampionship();
+    } else if (state.finishBannerAction === 'start') {
+      launchRace();
+    }
+  });
+  previewButton.addEventListener('click', () => {
+    setPreviewMode(!state.previewMode);
+  });
+  previewSlider.addEventListener('input', updatePreviewFromSlider);
+  openingOverlay.addEventListener('wheel', (ev) => {
+    if (!state.previewMode) return;
+    ev.preventDefault();
+    const maxScroll = Math.max(0, state.worldH - state.stageH);
+    state.previewScroll = clamp(state.previewScroll + ev.deltaY, 0, maxScroll);
+    previewSlider.value = String(Math.round((state.previewScroll / Math.max(1, maxScroll)) * 1000));
+  }, { passive: false });
+  restartSeriesButton.addEventListener('click', restartChampionship);
+  closePodiumButton.addEventListener('click', hideChampionshipOverlay);
+  compactMedia.addEventListener('change', () => syncResponsiveSidebar(true));
+  window.addEventListener('resize', resizeCanvases);
+
+  buildPickGrid();
+  buildOpeningText();
+  updateSeriesText();
+  initGL();
+  resizeCanvases();
+  syncResponsiveSidebar(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
