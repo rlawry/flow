@@ -776,8 +776,13 @@
       <h1>Stream Sprint</h1>
       <div class="sub">Ten racers roll through a long sandy channel. Choose one winner, follow that racer with the camera, and compare the inner-bank and outer-bank letter markers as the field sorts itself out.</div>
       <div id="controls">
-        <button id="topStartButton" style="width: 100%;">Next Course</button>
+        <button id="topStartButton">Next Course</button>
         <button id="showOverlayButton" class="secondary">Show Opening Screen</button>
+      </div>
+      <div class="legend">
+        <span><i class="dot" style="background:#e33649"></i> outer-bank letters</span>
+        <span><i class="dot" style="background:#6b1f2d"></i> inner-bank letters</span>
+        <span><i class="dot" style="background:#8fd8e8"></i> channel shimmer</span>
       </div>
     </div>
     <div id="leaderboard" class="panel">
@@ -975,6 +980,11 @@
     uniforms: null,
     glReady: false,
     trackCanvas: null,
+    trackMode: 'vector2d',
+    trackModeReason: 'init',
+    glMaxTextureSize: 0,
+    trackLinePaths: [],
+    mainTrackLine: null,
     currentCourse: 0,
     championshipPoints: Array(RACER_SPECS.length).fill(0),
     aggregateTime: Array(RACER_SPECS.length).fill(0),
@@ -1310,33 +1320,20 @@
     return line;
   }
 
-  function buildTrackMap() {
-    const dpr = state.dpr;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(2, Math.floor(state.worldW * dpr));
-    canvas.height = Math.max(2, Math.floor(state.worldH * dpr));
-    const c = canvas.getContext('2d');
-    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  function setTrackMode(mode, reason = '') {
+    state.trackMode = mode;
+    state.trackModeReason = reason;
+    glCanvas.style.display = mode === 'webgl' ? 'block' : 'none';
+  }
 
-    const bg = c.createLinearGradient(0, 0, 0, state.worldH);
-    bg.addColorStop(0, '#d8f3ff');
-    bg.addColorStop(0.24, '#ffeab5');
-    bg.addColorStop(0.72, '#f0c67d');
-    bg.addColorStop(1, '#d79a58');
-    c.fillStyle = bg;
-    c.fillRect(0, 0, state.worldW, state.worldH);
+  function canUseWebGLTrack(texW, texH) {
+    if (!state.glReady || !state.gl || !state.glMaxTextureSize) return false;
+    const safeLimit = Math.max(1024, Math.floor(state.glMaxTextureSize * 0.96));
+    return texW <= safeLimit && texH <= safeLimit;
+  }
 
-    c.save();
-    c.globalAlpha = 0.08;
-    for (let i = 0; i < 1600; i++) {
-      const x = (i * 97) % state.worldW;
-      const y = (i * 181) % state.worldH;
-      c.fillStyle = (i % 3 === 0) ? '#ba874b' : '#f6dfb1';
-      c.fillRect(x, y, 2, 2);
-    }
-    c.restore();
-
-    const lines = state.paths.map(pathToPath2D);
+  function drawTrackDetails(c) {
+    const lines = state.trackLinePaths;
     for (const line of lines) {
       c.save();
       c.strokeStyle = 'rgba(255,255,255,0.26)';
@@ -1367,7 +1364,7 @@
     c.strokeStyle = 'rgba(255,255,255,0.45)';
     c.lineWidth = 6;
     c.setLineDash([20, 22]);
-    c.stroke(pathToPath2D(state.path));
+    c.stroke(state.mainTrackLine);
     c.restore();
 
     if (state.sandbars.length) {
@@ -1409,14 +1406,48 @@
       c.fillRect(-stripW + i * (stripW * 2 / 10), -stripH, stripW * 2 / 10, stripH * 2);
     }
     c.restore();
+  }
+
+  function buildTrackMap() {
+    state.trackLinePaths = state.paths.map(pathToPath2D);
+    state.mainTrackLine = pathToPath2D(state.path);
+    state.trackCanvas = null;
+
+    const dpr = state.dpr;
+    const texW = Math.max(2, Math.floor(state.worldW * dpr));
+    const texH = Math.max(2, Math.floor(state.worldH * dpr));
+
+    if (!canUseWebGLTrack(texW, texH)) {
+      setTrackMode('vector2d', !state.glReady ? 'no-webgl' : `texture-too-tall:${texW}x${texH}`);
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = texW;
+    canvas.height = texH;
+    const c = canvas.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const bg = c.createLinearGradient(0, 0, 0, state.worldH);
+    bg.addColorStop(0, '#d8f3ff');
+    bg.addColorStop(0.24, '#ffeab5');
+    bg.addColorStop(0.72, '#f0c67d');
+    bg.addColorStop(1, '#d79a58');
+    c.fillStyle = bg;
+    c.fillRect(0, 0, state.worldW, state.worldH);
+
+    drawTrackDetails(c);
 
     state.trackCanvas = canvas;
+    setTrackMode('webgl', 'full-track-texture');
   }
 
   function initGL() {
     const gl = glCanvas.getContext('webgl', { antialias: true, alpha: false, premultipliedAlpha: false });
     if (!gl) {
       state.glReady = false;
+      state.glMaxTextureSize = 0;
+      setTrackMode('vector2d', 'webgl-unavailable');
       return;
     }
 
@@ -1505,6 +1536,7 @@
     state.program = program;
     state.buffer = buffer;
     state.texture = texture;
+    state.glMaxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 0;
     state.uniforms = {
       aPos: gl.getAttribLocation(program, 'a_pos'),
       tex: gl.getUniformLocation(program, 'u_tex'),
@@ -1517,11 +1549,18 @@
   }
 
   function uploadTrackTexture() {
-    if (!state.glReady || !state.trackCanvas) return;
+    if (state.trackMode !== 'webgl' || !state.glReady || !state.trackCanvas) return;
     const gl = state.gl;
+    while (gl.getError() !== gl.NO_ERROR) {}
     gl.bindTexture(gl.TEXTURE_2D, state.texture);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, state.trackCanvas);
+    const err = gl.getError();
+    if (err !== gl.NO_ERROR) {
+      console.warn('Track texture upload failed; falling back to 2D track rendering.', err, state.trackCanvas.width, state.trackCanvas.height, 'max=', state.glMaxTextureSize);
+      state.trackCanvas = null;
+      setTrackMode('vector2d', `upload-error:${err}`);
+    }
   }
 
   function nearestOnPath(x, y, lastChannel, lastSeg) {
@@ -2285,9 +2324,18 @@
     ctx.restore();
   }
 
+  function drawVectorTrack() {
+    drawFallbackTrack();
+    ctx.save();
+    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+    ctx.translate(0, -state.cameraY);
+    drawTrackDetails(ctx);
+    ctx.restore();
+  }
+
   function renderTrack(timeSec) {
-    if (!state.glReady) {
-      drawFallbackTrack();
+    if (state.trackMode !== 'webgl' || !state.glReady || !state.trackCanvas) {
+      drawVectorTrack();
       return;
     }
     const gl = state.gl;
@@ -2576,8 +2624,10 @@
     const timeSec = ts * 0.001;
     state.cameraY = clamp(currentCameraY(), 0, state.worldH - state.stageH);
     renderTrack(timeSec);
-    ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-    ctx.clearRect(0, 0, state.stageW, state.stageH);
+    if (state.trackMode === 'webgl' && state.glReady && state.trackCanvas) {
+      ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      ctx.clearRect(0, 0, state.stageW, state.stageH);
+    }
     drawMarkers();
     drawWorldLabels();
     drawCrabs(timeSec);
@@ -2691,6 +2741,7 @@
 
     if (!state.gl && glCanvas.getContext) initGL();
     if (state.glReady) state.gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+    glCanvas.style.display = state.trackMode === 'webgl' ? 'block' : 'none';
 
     if (snapshot) {
       rebuildCourseGeometry();
@@ -2701,6 +2752,7 @@
       updateSeriesText();
     }
     buildPickGrid();
+    glCanvas.style.display = state.trackMode === 'webgl' ? 'block' : 'none';
     syncResponsiveSidebar(true);
     render(0, 0);
   }
