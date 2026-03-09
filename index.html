@@ -464,6 +464,74 @@
     box-shadow: 0 10px 34px rgba(0,0,0,0.36);
   }
 
+  #boostHud {
+    position: fixed;
+    left: 18px;
+    bottom: 18px;
+    z-index: 12;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 16px;
+    color: #fff9ee;
+    background: rgba(12, 18, 28, 0.84);
+    border: 1px solid rgba(255,255,255,0.16);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.30);
+    user-select: none;
+    backdrop-filter: blur(4px);
+  }
+
+  #boostHud.show {
+    display: inline-flex;
+  }
+
+  #boostHud.ready {
+    background: linear-gradient(180deg, rgba(26, 56, 110, 0.94), rgba(14, 31, 69, 0.96));
+    border-color: rgba(172, 216, 255, 0.42);
+    box-shadow: 0 0 0 1px rgba(151, 212, 255, 0.18) inset, 0 10px 34px rgba(9, 28, 68, 0.40);
+    animation: boostPulse 0.9s ease-in-out infinite alternate;
+  }
+
+  #boostHud.active {
+    background: linear-gradient(180deg, rgba(90, 122, 20, 0.96), rgba(50, 74, 10, 0.96));
+    border-color: rgba(244, 255, 174, 0.42);
+    box-shadow: 0 0 0 1px rgba(242, 255, 191, 0.18) inset, 0 10px 34px rgba(38, 58, 6, 0.42);
+  }
+
+  #boostHud .label {
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+  }
+
+  #boostHud .state {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255,250,239,0.92);
+  }
+
+  #boostKey {
+    min-width: 58px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.14);
+    border: 1px solid rgba(255,255,255,0.18);
+    font: 900 11px/1 Arial, Helvetica, sans-serif;
+    letter-spacing: 0.08em;
+    text-align: center;
+  }
+
+  #boostHud.ready #boostKey {
+    background: rgba(255,255,255,0.22);
+    border-color: rgba(255,255,255,0.28);
+  }
+
+  @keyframes boostPulse {
+    from { transform: translateY(0); }
+    to { transform: translateY(-2px); }
+  }
+
   #mobileStandingsToggle {
     position: fixed;
     top: 12px;
@@ -686,6 +754,13 @@
       white-space: normal;
       border-radius: 18px;
     }
+
+    #boostHud {
+      left: 14px;
+      right: 14px;
+      bottom: 72px;
+      justify-content: space-between;
+    }
   }
 </style>
 </head>
@@ -701,13 +776,8 @@
       <h1>Stream Sprint</h1>
       <div class="sub">Ten racers roll through a long sandy channel. Choose one winner, follow that racer with the camera, and compare the inner-bank and outer-bank letter markers as the field sorts itself out.</div>
       <div id="controls">
-        <button id="topStartButton">Next Course</button>
+        <button id="topStartButton" style="width: 100%;">Next Course</button>
         <button id="showOverlayButton" class="secondary">Show Opening Screen</button>
-      </div>
-      <div class="legend">
-        <span><i class="dot" style="background:#e33649"></i> outer-bank letters</span>
-        <span><i class="dot" style="background:#6b1f2d"></i> inner-bank letters</span>
-        <span><i class="dot" style="background:#8fd8e8"></i> channel shimmer</span>
       </div>
     </div>
     <div id="leaderboard" class="panel">
@@ -745,6 +815,7 @@
 </div>
 
 <div id="finishBanner"></div>
+<div id="boostHud" aria-live="polite"><span class="label">BOOST</span><span class="state">Drop into the last 3 to charge it.</span><span id="boostKey">SPACE</span></div>
 
 <div id="championshipOverlay">
   <canvas id="celebrationCanvas"></canvas>
@@ -782,6 +853,8 @@
   const previewSlider = document.getElementById('previewSlider');
   const showOverlayButton = document.getElementById('showOverlayButton');
   const finishBanner = document.getElementById('finishBanner');
+  const boostHud = document.getElementById('boostHud');
+  const boostKey = document.getElementById('boostKey');
   const championshipOverlay = document.getElementById('championshipOverlay');
   const celebrationCanvas = document.getElementById('celebrationCanvas');
   const celebrationCtx = celebrationCanvas.getContext('2d');
@@ -912,7 +985,11 @@
     confetti: [],
     sidebarOpen: !compactMedia.matches,
     finishBannerAction: 'none',
-    selectionLocked: false
+    selectionLocked: false,
+    playerBoostReady: false,
+    playerBoostUsed: false,
+    playerBoostActive: 0,
+    playerBoostPrompted: false
   };
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -977,8 +1054,15 @@
     seriesLine.textContent = `Series score: 10 points for 1st, down to 1 point for 10th. Completed courses: ${completed}/${COURSES.length}.`;
     courseLine.textContent = `${c.name} — ${c.summary}`;
     const chosen = RACER_SPECS[state.selectedWinner];
+    let boostText = '';
+    if (state.running) {
+      if (state.playerBoostActive > 0) boostText = ' · BOOST ACTIVE';
+      else if (state.playerBoostReady) boostText = ' · BOOST READY (SPACE)';
+      else if (state.playerBoostUsed) boostText = ' · BOOST USED';
+      else boostText = ' · BOOST charges in the last 3';
+    }
     chosenLine.textContent = state.selectionLocked
-      ? `Camera follow: ${chosen.name} · locked for this championship.`
+      ? `Camera follow: ${chosen.name} · locked for this championship.${boostText}`
       : `Camera follow: ${chosen.name} · choose before Course 1 starts.`;
     topStartButton.textContent = state.championshipComplete ? 'Restart Championship' : 'Next Course';
     topStartButton.disabled = state.running;
@@ -1573,6 +1657,10 @@
     finishBanner.classList.remove('clickable');
     finishBanner.textContent = '';
     state.finishBannerAction = 'none';
+    state.playerBoostReady = false;
+    state.playerBoostUsed = false;
+    state.playerBoostActive = 0;
+    state.playerBoostPrompted = false;
     if (!keepOverlay) openingOverlay.classList.remove('hidden');
     buildOpeningText();
     updateSeriesText();
@@ -1620,6 +1708,10 @@
       openingHidden: openingOverlay.classList.contains('hidden'),
       openingPreviewing: openingOverlay.classList.contains('previewing'),
       selectionLocked: state.selectionLocked,
+      playerBoostReady: state.playerBoostReady,
+      playerBoostUsed: state.playerBoostUsed,
+      playerBoostActive: state.playerBoostActive,
+      playerBoostPrompted: state.playerBoostPrompted,
       racers: state.racers.map(r => {
         const near = nearestOnPath(r.x, r.y, r.lastChannel, r.lastSeg);
         const tx = near ? near.tx : 0;
@@ -1714,6 +1806,10 @@
     state.lastFrame = snapshot.lastFrame;
     state.selectedWinner = snapshot.selectedWinner;
     state.selectionLocked = snapshot.selectionLocked;
+    state.playerBoostReady = !!snapshot.playerBoostReady;
+    state.playerBoostUsed = !!snapshot.playerBoostUsed;
+    state.playerBoostActive = snapshot.playerBoostActive || 0;
+    state.playerBoostPrompted = !!snapshot.playerBoostPrompted;
 
     const maxCamera = Math.max(0, state.worldH - state.stageH);
     const maxPreview = Math.max(0, state.worldH - state.stageH);
@@ -1779,6 +1875,10 @@
     state.startTime = performance.now();
     state.lastFrame = 0;
     state.accumulator = 0;
+    state.playerBoostReady = false;
+    state.playerBoostUsed = false;
+    state.playerBoostActive = 0;
+    state.playerBoostPrompted = false;
     openingOverlay.classList.remove('previewing');
     openingOverlay.classList.add('hidden');
     finishBanner.classList.remove('show');
@@ -1825,6 +1925,51 @@
       state.finishBannerAction = compactMedia.matches ? 'start' : 'none';
       if (compactMedia.matches) setSidebarOpen(true);
     }
+  }
+
+  function currentRaceOrder() {
+    return state.racers.slice().sort((a, b) => {
+      const aDone = a.finishedTime != null && !a.dnf;
+      const bDone = b.finishedTime != null && !b.dnf;
+      if (aDone && bDone) return (a.finishPlace || 999) - (b.finishPlace || 999);
+      if (aDone !== bDone) return aDone ? -1 : 1;
+      if (a.dnf && b.dnf) return (b.progress || 0) - (a.progress || 0);
+      if (a.dnf !== b.dnf) return a.dnf ? 1 : -1;
+      const ap = a.progress || 0;
+      const bp = b.progress || 0;
+      if (bp !== ap) return bp - ap;
+      return (b.y || 0) - (a.y || 0);
+    });
+  }
+
+  function maybeGrantPlayerBoost() {
+    if (!state.running || state.playerBoostReady || state.playerBoostUsed || state.playerBoostActive > 0) return;
+    const player = state.racers[state.selectedWinner];
+    if (!player || player.dnf || player.hidden || player.finishedTime != null) return;
+    const raceAge = performance.now() - state.startTime;
+    if (raceAge < 1800 && player.progress < 0.10) return;
+    const order = currentRaceOrder();
+    const rank = order.findIndex(r => r.id === player.id);
+    if (rank >= Math.max(0, order.length - 3)) {
+      state.playerBoostReady = true;
+      state.playerBoostPrompted = true;
+      player.freakLabel = 'PLAYER BOOST READY';
+      player.freakLabelTimer = Math.max(player.freakLabelTimer || 0, 0.95);
+      updateSeriesText();
+    }
+  }
+
+  function activatePlayerBoost() {
+    if (!state.running || !state.playerBoostReady) return false;
+    const player = state.racers[state.selectedWinner];
+    if (!player || player.dnf || player.hidden || player.finishedTime != null) return false;
+    state.playerBoostReady = false;
+    state.playerBoostUsed = true;
+    state.playerBoostActive = 1.35;
+    player.freakLabel = 'PLAYER BOOST!';
+    player.freakLabelTimer = 1.05;
+    updateSeriesText();
+    return true;
   }
 
   function triggerFreakAccident(r, near) {
@@ -1954,6 +2099,8 @@
     }));
     state.running = false;
     state.finished = true;
+    state.playerBoostReady = false;
+    state.playerBoostActive = 0;
     const winner = finishers[0] || ordered[0];
     const dnfCount = dnfs.length;
     if (state.currentCourse < COURSES.length - 1) {
@@ -1980,6 +2127,7 @@
     const bankRepelStrength = cfg.bankRepelStrength;
     const maxSpeed = cfg.maxSpeed;
     const raceTime = performance.now() - state.startTime;
+    if (state.playerBoostActive > 0) state.playerBoostActive = Math.max(0, state.playerBoostActive - dt);
 
     for (const r of state.racers) {
       if (r.hidden) continue;
@@ -2019,6 +2167,7 @@
           r.nextFreakIn = randRange(6.0, 12.0);
         }
       }
+      if (r.id === state.selectedWinner) maybeGrantPlayerBoost();
 
       const along = r.vx * near.tx + r.vy * near.ty;
       const guideTarget = 232 * (r.guideBias || 1);
@@ -2055,6 +2204,14 @@
         eventSlide = 1.10;
         r.vx += near.tx * 165 * dt;
         r.vy += near.ty * 165 * dt;
+      }
+      if (r.id === state.selectedWinner && state.playerBoostActive > 0) {
+        eventPower *= 1.65;
+        eventDrag *= 0.54;
+        eventMax *= 1.55;
+        eventSlide *= 1.04;
+        r.vx += near.tx * 310 * dt;
+        r.vy += near.ty * 310 * dt;
       }
 
       r.vy += gravityY * r.power * (r.racePower || 1) * eventPower * dt;
@@ -2271,6 +2428,13 @@
         ctx.strokeStyle = 'rgba(22, 92, 150, 0.9)';
         ctx.arc(0, 0, r.radius + 5, 0, Math.PI * 2);
         ctx.stroke();
+        if (state.playerBoostReady || state.playerBoostActive > 0) {
+          ctx.beginPath();
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = state.playerBoostActive > 0 ? 'rgba(231, 255, 120, 0.96)' : 'rgba(154, 220, 255, 0.96)';
+          ctx.arc(0, 0, r.radius + 10 + Math.sin(performance.now() * 0.012) * 1.4, -Math.PI * 0.55, Math.PI * 0.80);
+          ctx.stroke();
+        }
       }
 
       ctx.font = 'bold 11px Arial';
@@ -2326,6 +2490,33 @@
       return `P${entry.lastPlace}`;
     }
     return 'Ready';
+  }
+
+  function updateBoostHud() {
+    const shouldShow = state.running && !state.championshipComplete;
+    boostHud.classList.toggle('show', shouldShow);
+    boostHud.classList.remove('ready', 'active');
+    if (!shouldShow) return;
+    const stateEl = boostHud.querySelector('.state');
+    if (state.playerBoostActive > 0) {
+      boostHud.classList.add('active');
+      stateEl.textContent = `Boosting now · ${state.playerBoostActive.toFixed(1)}s`;
+      boostKey.textContent = 'LIVE';
+      return;
+    }
+    if (state.playerBoostReady) {
+      boostHud.classList.add('ready');
+      stateEl.textContent = 'Ready — press Space before the finish';
+      boostKey.textContent = 'SPACE';
+      return;
+    }
+    if (state.playerBoostUsed) {
+      stateEl.textContent = 'Used this course';
+      boostKey.textContent = 'SPENT';
+      return;
+    }
+    stateEl.textContent = 'Drop into the last 3 to charge it';
+    boostKey.textContent = 'SPACE';
   }
 
   function updateLeaderboard(force) {
@@ -2392,6 +2583,7 @@
     drawCrabs(timeSec);
     drawRacers();
     updateLeaderboard(false);
+    updateBoostHud();
     drawConfettiFrame(dt);
   }
 
@@ -2474,6 +2666,10 @@
     state.championshipComplete = false;
     state.startedOnce = false;
     state.selectionLocked = false;
+    state.playerBoostReady = false;
+    state.playerBoostUsed = false;
+    state.playerBoostActive = 0;
+    state.playerBoostPrompted = false;
     hideChampionshipOverlay();
     buildCurrentCourse(false);
   }
@@ -2586,6 +2782,13 @@
   closePodiumButton.addEventListener('click', hideChampionshipOverlay);
   compactMedia.addEventListener('change', () => syncResponsiveSidebar(true));
   window.addEventListener('resize', resizeCanvases);
+  window.addEventListener('keydown', (ev) => {
+    if (ev.code !== 'Space') return;
+    if (ev.target && /input|textarea|select|button/i.test(ev.target.tagName)) return;
+    if (!state.running) return;
+    ev.preventDefault();
+    activatePlayerBoost();
+  });
 
   buildPickGrid();
   buildOpeningText();
